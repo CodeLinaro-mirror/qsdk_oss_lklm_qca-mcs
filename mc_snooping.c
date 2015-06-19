@@ -2900,17 +2900,25 @@ static int mc_device_event(struct notifier_block *this, unsigned long event, voi
 	struct net_device *dev = netdev_notifier_info_to_dev(ptr);
 #endif
 	struct mc_struct *mc;
+	struct net_bridge_port *p;
 
 	if (!dev)
 		return NOTIFY_DONE;
 
-	mc = MC_DEV(dev);
+	/* Get default Mulitcast device */
+	mc = MC_DEV(NULL);
 	if (!mc)
 		return NOTIFY_DONE;
 
 	switch (event) {
 	case NETDEV_UNREGISTER:
 		mc_detach(dev);
+		break;
+	case NETDEV_BR_LEAVE:
+		p = br_port_get_rtnl(dev);
+		if (p) {
+			mc_nbp_change(p, RTM_DELLINK);
+		}
 		break;
 	}
 
