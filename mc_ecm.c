@@ -98,7 +98,6 @@ static int __mc_bridge_get_ifs(struct net_device *brdev, struct mc_ip *mc_group,
 
 	mc = MC_DEV(brdev);
 	if (!mc || !mc->started) {
-		MC_PRINT("IGMP/MLD snooping is not enabled\n");
 		return -1;
 	}
 
