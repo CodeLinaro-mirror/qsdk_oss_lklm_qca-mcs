@@ -338,7 +338,7 @@ static void mc_group_list_add(struct mc_ip *pgroup, struct mc_glist_entry **ghea
 	*ghead = pge;
 }
 
-static void mc_group_notify_one(struct mc_struct *mc, struct mc_ip *pgroup)
+void mc_group_notify_one(struct mc_struct *mc, struct mc_ip *pgroup)
 {
 	struct net_device *brdev;
 
