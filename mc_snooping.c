@@ -2861,7 +2861,7 @@ int mc_attach(struct net_device *dev)
 	mc->timeout_gsq_enable = 1; /* enable timeout from group sepcific query */
 	mc->timeout_asq_enable = 0; /* disable timeout from all system query */
 	mc->timeout_gmi_enable = 1; /* enable timeout from membership interval */
-	mc->m2i3_filter_enable = 1; /* enable mldv2/igmpv3 leave filter */
+	mc->m2i3_filter_enable = 0; /* enable mldv2/igmpv3 leave filter */
 	mc->ignore_tbit = 0; /* Allow IPv6 Multicast Groups, that don’t have the T-Bit enabled, to be snooped */
 	mc->multicast_router = 1; /* Enable router mode */
 	mc->rp.type = MC_RTPORT_DEFAULT; /* If querier exist, forward IGMP/MLD message to the router port, else flood to all ports. */

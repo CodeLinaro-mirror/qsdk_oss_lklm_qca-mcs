@@ -113,12 +113,6 @@ static unsigned int mc_forward_hook(unsigned int hooknum, struct sk_buff *skb,
 	struct mc_struct *mc = MC_DEV(out);
 	struct hlist_head *rhead = NULL;
 	struct net_bridge_port *port;
-	struct mc_mdb_entry *mdb = MC_SKB_CB(skb)->mdb;
-
-	/* Leave filter */
-	if (mdb && MC_SKB_CB(skb)->type == MC_LEAVE &&
-			(atomic_read(&mdb->users) > 0))
-		goto drop;
 
 	if (MC_SKB_CB(skb)->type != MC_LEAVE &&
 			MC_SKB_CB(skb)->type != MC_REPORT)
