@@ -2580,13 +2580,12 @@ static int mc_stop(struct mc_struct *mc)
 
 	mc_mdb_flush(mc);
 	mc_rlist_flush(mc);
+	spin_unlock_bh(&mc->lock);
 
 	del_timer_sync(&mc->qtimer);
 	del_timer_sync(&mc->atimer);
 	del_timer_sync(&mc->rtimer);
 	del_timer_sync(&mc->evtimer);
-
-	spin_unlock_bh(&mc->lock);
 
 	return 0;
 }
