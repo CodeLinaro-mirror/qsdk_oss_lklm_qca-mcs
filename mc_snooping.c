@@ -2527,7 +2527,7 @@ static void mc_dev_rcu_free(struct rcu_head *head)
 
 static int mc_open(struct mc_struct *mc)
 {
-	struct net_bridge *br = netdev_priv(mc->dev);
+	struct net_bridge *br;
 
 	if (!mc) {
 		printk(KERN_ERR "%s: mc module is not registered!\n", __func__);
@@ -2543,6 +2543,8 @@ static int mc_open(struct mc_struct *mc)
 		MC_PRINT(KERN_DEBUG "%s: mc function is already enabled!\n", __func__);
 		return 0;
 	}
+
+	br = netdev_priv(mc->dev);
 
 	spin_lock(&mc->lock);
 	mc->ageing_query = jiffies;
