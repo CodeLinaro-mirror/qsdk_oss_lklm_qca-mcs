@@ -42,6 +42,7 @@
 
 
 static struct mc_struct __rcu *_g_mcs = NULL;
+static spinlock_t g_mcs_lock;
 
 int mc_group_hash(__be32 mdb_salt, __be32 group)
 {
@@ -2260,19 +2261,23 @@ out:
  */
 void mc_fdb_change(__u8 *mac, int event)
 {
-	struct mc_struct *mc = MC_DEV(NULL);
+	struct mc_struct *mc;
 	int i;
 
-	if (!mac || !mc)
+	if (!mac)
+		return;
+
+	mc = MC_DEV_GET(NULL);
+	if (!mc)
 		return;
 
 	switch (event) {
 	case RTM_NEWNEIGH:
-		return;
+		break;
 
 	case RTM_DELNEIGH:
-		if (!mc || !mc->started)
-			return;
+		if (!mc->started)
+			break;
 
 		MC_PRINT("%s: Del fdb: "MC_MAC_STR"\n", __func__, MC_MAC_FMT(mac));
 
@@ -2309,6 +2314,8 @@ void mc_fdb_change(__u8 *mac, int event)
 	default:
 		break;
 	}
+
+	MC_DEV_PUT(mc);
 }
 
 /*
@@ -2326,13 +2333,17 @@ void mc_nbp_change(struct net_bridge_port *p, int event)
 	if (!p || !p->br)
 		return;
 
-	mc = MC_DEV(p->br->dev);
-
-	if (!mc || event != RTM_DELLINK)
+	if (event != RTM_DELLINK)
 		return;
 
-	if (!mc->started)
+	mc = MC_DEV_GET(p->br->dev);
+	if (!mc)
 		return;
+
+	if (!mc->started) {
+		MC_DEV_PUT(mc);
+		return;
+	}
 
 	MC_PRINT("%s: Del port %s\n", __func__, p->dev->name);
 
@@ -2380,6 +2391,7 @@ void mc_nbp_change(struct net_bridge_port *p, int event)
 	spin_unlock_bh(&mc->lock);
 
 	mc_rtimer_reset(mc);
+	MC_DEV_PUT(mc);
 }
 
 /*
@@ -2441,21 +2453,42 @@ static void mc_mdb_flush(struct mc_struct *mc)
 	}
 }
 
+/*
+ *  When this fucntion returns a valid mc structure, rcu read lock is held
+ *  in case mc is freed on another CPU unexpectedly.
+ */
 struct mc_struct *mc_dev_get(const struct net_device *dev)
 {
 	struct mc_struct *mc;
 
+	rcu_read_lock();
 	mc = rcu_dereference(_g_mcs);
-	if (!mc)
+	if (!mc) {
+		rcu_read_unlock();
 		return NULL;
+	}
 
 	if (!dev)
 		return _g_mcs;
 
-	if (mc->dev != dev)
+	if (mc->dev != dev) {
+		rcu_read_unlock();
 		return NULL;
+	}
 
 	return mc;
+}
+
+/*
+ * This function must be called pairwise with mc_dev_get
+ */
+void mc_dev_put(struct mc_struct *mc)
+{
+	if (!mc) {
+		printk(KERN_ERR "%s: invalid mc!\n", __func__);
+		return;
+	}
+	rcu_read_unlock();
 }
 
 static int mc_dev_register(struct mc_struct *mc)
@@ -2463,8 +2496,9 @@ static int mc_dev_register(struct mc_struct *mc)
 	struct mc_struct *oldmc;
 
 	oldmc = rcu_dereference(_g_mcs);
-	if (oldmc)
+	if (oldmc) {
 		return -1;
+	}
 
 	rcu_assign_pointer(_g_mcs, mc);
 	return 0;
@@ -2475,14 +2509,23 @@ static int mc_dev_unregister(struct mc_struct *mc)
 	struct mc_struct *oldmc;
 
 	oldmc = rcu_dereference(_g_mcs);
-	if (oldmc != mc)
+	if (oldmc != mc) {
 		return -1;
+	}
 
 	rcu_assign_pointer(_g_mcs, NULL);
 	return 0;
 }
 
-int mc_open(struct mc_struct *mc)
+static void mc_dev_rcu_free(struct rcu_head *head)
+{
+	struct mc_struct *mc =
+		container_of(head, struct mc_struct, rcu);
+
+	kfree(mc);
+}
+
+static int mc_open(struct mc_struct *mc)
 {
 	struct net_bridge *br = netdev_priv(mc->dev);
 
@@ -2515,7 +2558,7 @@ int mc_open(struct mc_struct *mc)
 	return 0;
 }
 
-int mc_stop(struct mc_struct *mc)
+static int mc_stop(struct mc_struct *mc)
 {
 	if (!mc) {
 		printk(KERN_ERR "%s: mc module is not registered!\n", __func__);
@@ -2822,10 +2865,11 @@ static void mc_event_delay(unsigned long data)
 
 int mc_attach(struct net_device *dev)
 {
-	struct mc_struct *mc = MC_DEV(dev);
+	struct mc_struct *mc = MC_DEV_GET(dev);
 
 	if (mc) {
 		printk(KERN_DEBUG "%s: bridge %s is already attached\n", __func__, dev->name);
+		MC_DEV_PUT(mc);
 		return 0;
 	}
 
@@ -2878,26 +2922,48 @@ int mc_attach(struct net_device *dev)
 	setup_timer(&mc->evtimer, mc_event_delay,
 			(unsigned long)mc);
 
+
+	spin_lock_bh(&g_mcs_lock);
 	if (mc_dev_register(mc) < 0) {
+		spin_unlock_bh(&g_mcs_lock);
 		kfree(mc);
 		return -1;
 	}
 
 	mc_open(mc);
+	spin_unlock_bh(&g_mcs_lock);
 
 	return 0;
 }
 
 void mc_detach(struct net_device *dev)
 {
-	struct mc_struct *mc = MC_DEV(dev);
+	struct mc_struct *mc;
 
-	if (!mc)
+	spin_lock_bh(&g_mcs_lock);
+	mc = MC_DEV_GET(dev);
+	if (!mc) {
+		spin_unlock_bh(&g_mcs_lock);
 		return;
+	}
 
+	if (mc_dev_unregister(mc) < 0) {
+		printk(KERN_ERR "%s: mc device has already been unregistered!\n", __func__);
+		MC_DEV_PUT(mc);
+		spin_unlock_bh(&g_mcs_lock);
+		return;
+	}
+
+	MC_DEV_PUT(mc);
+	spin_unlock_bh(&g_mcs_lock);
+
+	/*
+	 * MC struct has been detached, but it may be referenced by other exeuction paths,
+	 * Any references will be protected by RCU read lock.
+	 */
 	mc_stop(mc);
-	mc_dev_unregister(mc);
-	kfree(mc);
+	call_rcu(&mc->rcu, mc_dev_rcu_free);
+
 }
 
 static int mc_device_event(struct notifier_block *this, unsigned long event, void *ptr)
@@ -2914,7 +2980,7 @@ static int mc_device_event(struct notifier_block *this, unsigned long event, voi
 		return NOTIFY_DONE;
 
 	/* Get default Mulitcast device */
-	mc = MC_DEV(NULL);
+	mc = MC_DEV_GET(NULL);
 	if (!mc)
 		return NOTIFY_DONE;
 
@@ -2930,6 +2996,7 @@ static int mc_device_event(struct notifier_block *this, unsigned long event, voi
 		break;
 	}
 
+	MC_DEV_PUT(mc);
 	return NOTIFY_DONE;
 }
 
@@ -2941,6 +3008,7 @@ static struct notifier_block mc_dev_notifier = {
 
 int mc_snooping_init(void)
 {
+	spin_lock_init(&g_mcs_lock);
 	register_netdevice_notifier(&mc_dev_notifier);
 	return 0;
 }
