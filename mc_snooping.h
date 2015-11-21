@@ -21,8 +21,7 @@
 int __init mc_snooping_init(void);
 void mc_snooping_exit(void);
 struct mc_struct *mc_dev_get(const struct net_device *dev);
-int mc_open(struct mc_struct *mc);
-int mc_stop(struct mc_struct *mc);
+void mc_dev_put(struct mc_struct *mc);
 int mc_rcv(struct mc_struct *mc, struct sk_buff *skb);
 int mc_find_acl_rule(struct mc_acl_rule_table *acl, __be32 in4, void *in6, __u8 *mac, __be32 rule);
 int mc_group_hash(__be32 mdb_salt, __be32 group);

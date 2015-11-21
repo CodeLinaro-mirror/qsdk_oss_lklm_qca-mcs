@@ -96,14 +96,19 @@ static int __mc_bridge_get_ifs(struct net_device *brdev, struct mc_ip *mc_group,
 	int i;
 	int ifnum;
 
-	mc = MC_DEV(brdev);
-	if (!mc || !mc->started) {
+	mc = MC_DEV_GET(brdev);
+	if (!mc)
+		return -1;
+
+	if (!mc->started) {
+		MC_DEV_PUT(mc);
 		return -1;
 	}
 
 	head = &mc->hash[mc_group_hash(mc->salt, mc_group->u.ip4)];
 	mdb = mc_mdb_find(head, mc_group);
 	if (!mdb || !atomic_read(&mdb->users)) {
+		MC_DEV_PUT(mc);
 		return 0;
 	}
 
@@ -134,6 +139,7 @@ static int __mc_bridge_get_ifs(struct net_device *brdev, struct mc_ip *mc_group,
 	}
 	read_unlock(&mdb->rwlock);
 
+	MC_DEV_PUT(mc);
 	return ifnum;
 
 }

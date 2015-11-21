@@ -357,31 +357,45 @@ static int mc_process(const struct net_bridge_port *src, struct sk_buff *skb)
 	struct net_bridge *br;
 	struct mc_struct *mc;
 	void *fdb;
+	int  ret;
 
-	mc = MC_DEV(BR_INPUT_SKB_CB(skb)->brdev);
-
-	if (!mc || !mc->started ||
-		is_broadcast_ether_addr(eth_hdr(skb)->h_dest))
+	mc = MC_DEV_GET(BR_INPUT_SKB_CB(skb)->brdev);
+	if (!mc) {
 		return -EINVAL;
+	}
 
-	if (!src)
-		return mc_convert(mc, skb, 0);
+	if (!mc->started ||
+		is_broadcast_ether_addr(eth_hdr(skb)->h_dest)) {
+		MC_DEV_PUT(mc);
+		return -EINVAL;
+	}
+
+	if (!src) {
+		ret = mc_convert(mc, skb, 0);
+		MC_DEV_PUT(mc);
+		return ret;
+	}
 
 	br = src->br;
 	fdb = os_br_fdb_get(br, eth_hdr(skb)->h_source);
 
-	if (!fdb)
+	if (!fdb) {
+		MC_DEV_PUT(mc);
 		return -EINVAL;
+	}
 
 	MC_SKB_CB(skb)->fdb = fdb;
 	MC_SKB_CB(skb)->port = (void *)src;
 
 	if (mc_rcv(mc, skb)) {
+		MC_DEV_PUT(mc);
 		kfree_skb(skb);
 		return 0;
 	}
 
-	return mc_convert(mc, skb, 1);
+	ret = mc_convert(mc, skb, 1);
+	MC_DEV_PUT(mc);
+	return ret;
 }
 
 int mc_forward_init(void)

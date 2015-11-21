@@ -457,7 +457,7 @@ static void mc_netlink_receive(struct sk_buff *__skb)
 	void *msgdata = NULL;
 	u32 pid, seq, msgtype;
 	struct __mcctl_msg_header *msghdr;
-	struct mc_struct *mc;
+	struct mc_struct *mc = NULL;
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 10, 0))
 	if ((skb = skb_clone(__skb, GFP_KERNEL)) == NULL)
@@ -484,7 +484,7 @@ static void mc_netlink_receive(struct sk_buff *__skb)
 			break;
 		}
 
-		if ((mc = MC_DEV(brdev)) == NULL && msgtype != MC_MSG_SET_ENABLE) {
+		if ((mc = MC_DEV_GET(brdev)) == NULL && msgtype != MC_MSG_SET_ENABLE) {
 			printk("%s: mc module is not registered!\n", __func__);
 			msghdr->status = MC_STATUS_FAILURE;
 			dev_put(brdev);
@@ -680,6 +680,9 @@ static void mc_netlink_receive(struct sk_buff *__skb)
 		dev_put(brdev);
 	} while (0);
 
+	if (mc) {
+		MC_DEV_PUT(mc);
+	}
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 7, 0))
 	NETLINK_CB(skb).portid = 0; /* from kernel */
 #else
