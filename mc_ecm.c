@@ -96,19 +96,17 @@ static int __mc_bridge_get_ifs(struct net_device *brdev, struct mc_ip *mc_group,
 	int i;
 	int ifnum;
 
-	mc = MC_DEV_GET(brdev);
+	mc = MC_DEV(brdev);
 	if (!mc)
 		return -1;
 
 	if (!mc->started) {
-		MC_DEV_PUT(mc);
 		return -1;
 	}
 
 	head = &mc->hash[mc_group_hash(mc->salt, mc_group->u.ip4)];
 	mdb = mc_mdb_find(head, mc_group);
 	if (!mdb || !atomic_read(&mdb->users)) {
-		MC_DEV_PUT(mc);
 		return 0;
 	}
 
@@ -139,7 +137,6 @@ static int __mc_bridge_get_ifs(struct net_device *brdev, struct mc_ip *mc_group,
 	}
 	read_unlock(&mdb->rwlock);
 
-	MC_DEV_PUT(mc);
 	return ifnum;
 
 }
@@ -149,6 +146,7 @@ int mc_bridge_ipv4_get_if(struct net_device *brdev, __be32 origin, __be32 group,
 {
 	struct mc_ip mc_group;
 	struct mc_ip mc_source;
+	int ret;
 
 	memset(&mc_group, 0, sizeof(struct mc_ip));
 	mc_group.u.ip4 = group;
@@ -158,7 +156,11 @@ int mc_bridge_ipv4_get_if(struct net_device *brdev, __be32 origin, __be32 group,
 	mc_source.u.ip4 = origin;
 	mc_source.pro = htons(ETH_P_IP);
 
-	return __mc_bridge_get_ifs(brdev, &mc_group, &mc_source, max_dst, dst_dev);
+	rcu_read_lock();
+	ret = __mc_bridge_get_ifs(brdev, &mc_group, &mc_source, max_dst, dst_dev);
+	rcu_read_unlock();
+
+	return ret;
 }
 EXPORT_SYMBOL(mc_bridge_ipv4_get_if);
 
@@ -196,6 +198,7 @@ int mc_bridge_ipv6_get_if(struct net_device *brdev, struct in6_addr *origin, str
 {
 	struct mc_ip mc_group;
 	struct mc_ip mc_source;
+	int ret;
 
 	memset(&mc_group, 0, sizeof(struct mc_ip));
 	mc_ipv6_addr_copy(&mc_group.u.ip6, group);
@@ -205,7 +208,11 @@ int mc_bridge_ipv6_get_if(struct net_device *brdev, struct in6_addr *origin, str
 	mc_ipv6_addr_copy(&mc_source.u.ip6, origin);
 	mc_source.pro = htons(ETH_P_IPV6);
 
-	return __mc_bridge_get_ifs(brdev, &mc_group, &mc_source, max_dst, dst_dev);
+	rcu_read_lock();
+	ret = __mc_bridge_get_ifs(brdev, &mc_group, &mc_source, max_dst, dst_dev);
+	rcu_read_unlock();
+
+	return ret;
 }
 EXPORT_SYMBOL(mc_bridge_ipv6_get_if);
 

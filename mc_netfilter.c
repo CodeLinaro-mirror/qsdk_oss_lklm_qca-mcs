@@ -51,13 +51,15 @@ static unsigned int mc_pre_routing_hook(unsigned int hooknum, struct sk_buff *sk
 					int(*okfn)(struct sk_buff *))
 #endif
 {
-	struct mc_struct *mc = MC_DEV_GET(in);
+	struct mc_struct *mc;
 	struct ethhdr *eh = eth_hdr(skb);
 	struct net_bridge_port *port;
 	u8 dscp;
 
+	rcu_read_lock();
+	mc = MC_DEV(in);
 	if (!mc)
-		return NF_ACCEPT;
+		goto out;
 
 	if (skb->pkt_type != PACKET_HOST ||
 		(port = os_br_port_get(in)) == NULL)
@@ -100,7 +102,7 @@ static unsigned int mc_pre_routing_hook(unsigned int hooknum, struct sk_buff *sk
 #endif
 	}
 out:
-	MC_DEV_PUT(mc);
+	rcu_read_unlock();
 	return NF_ACCEPT;
 }
 
@@ -114,12 +116,15 @@ static unsigned int mc_forward_hook(unsigned int hooknum, struct sk_buff *skb,
 		int(*okfn)(struct sk_buff *))
 #endif
 {
-	struct mc_struct *mc = MC_DEV_GET(out);
+	struct mc_struct *mc;
 	struct hlist_head *rhead = NULL;
 	struct net_bridge_port *port;
 
+
+	rcu_read_lock();
+	mc = MC_DEV(out);
 	if (!mc) {
-		return NF_ACCEPT;
+		goto accept;
 	}
 
 	if (MC_SKB_CB(skb)->type != MC_LEAVE &&
@@ -155,10 +160,10 @@ static unsigned int mc_forward_hook(unsigned int hooknum, struct sk_buff *skb,
 		goto drop;
 	}
 accept:
-	MC_DEV_PUT(mc);
+	rcu_read_unlock();
 	return NF_ACCEPT;
 drop:
-	MC_DEV_PUT(mc);
+	rcu_read_unlock();
 	return NF_DROP;
 }
 

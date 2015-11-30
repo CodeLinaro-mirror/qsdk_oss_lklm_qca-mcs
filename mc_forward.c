@@ -352,27 +352,25 @@ out:
 	return -EINVAL;
 }
 
-static int mc_process(const struct net_bridge_port *src, struct sk_buff *skb)
+static int __mc_process(const struct net_bridge_port *src, struct sk_buff *skb)
 {
 	struct net_bridge *br;
 	struct mc_struct *mc;
 	void *fdb;
 	int  ret;
 
-	mc = MC_DEV_GET(BR_INPUT_SKB_CB(skb)->brdev);
+	mc = MC_DEV(BR_INPUT_SKB_CB(skb)->brdev);
 	if (!mc) {
 		return -EINVAL;
 	}
 
 	if (!mc->started ||
 		is_broadcast_ether_addr(eth_hdr(skb)->h_dest)) {
-		MC_DEV_PUT(mc);
 		return -EINVAL;
 	}
 
 	if (!src) {
 		ret = mc_convert(mc, skb, 0);
-		MC_DEV_PUT(mc);
 		return ret;
 	}
 
@@ -380,7 +378,6 @@ static int mc_process(const struct net_bridge_port *src, struct sk_buff *skb)
 	fdb = os_br_fdb_get(br, eth_hdr(skb)->h_source);
 
 	if (!fdb) {
-		MC_DEV_PUT(mc);
 		return -EINVAL;
 	}
 
@@ -388,13 +385,23 @@ static int mc_process(const struct net_bridge_port *src, struct sk_buff *skb)
 	MC_SKB_CB(skb)->port = (void *)src;
 
 	if (mc_rcv(mc, skb)) {
-		MC_DEV_PUT(mc);
 		kfree_skb(skb);
 		return 0;
 	}
 
 	ret = mc_convert(mc, skb, 1);
-	MC_DEV_PUT(mc);
+	return ret;
+}
+
+
+static int mc_process(const struct net_bridge_port *src, struct sk_buff *skb)
+{
+	int  ret;
+
+	rcu_read_lock();
+	ret = __mc_process(src, skb);
+	rcu_read_unlock();
+
 	return ret;
 }
 

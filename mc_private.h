@@ -114,8 +114,7 @@ struct mld2_query {
 #define MC_CHECK_TBIT(ip6)	(((ip6)->s6_addr[1] & 0x10) &&	((ip6)->s6_addr[12] & 0x80))
 #define MC_INVALID_PID		(-1)
 
-#define MC_DEV_GET(dev) (mc_dev_get(dev))
-#define MC_DEV_PUT(mc) (mc_dev_put(mc))
+#define MC_DEV(dev) (mc_dev_get(dev))
 
 #define MC_DEBUG
 #ifdef MC_DEBUG

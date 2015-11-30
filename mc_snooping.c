@@ -516,6 +516,9 @@ static void mc_atimer_reset(struct mc_struct *mc)
 		expires = __expires;
 #endif
 
+	if (!mc->started)
+		return;
+
 	if (timer_pending(&mc->atimer) ?
 			time_after(mc->atimer.expires, jiffies + expires) :
 				try_to_del_timer_sync(&mc->atimer) >= 0) {
@@ -538,12 +541,12 @@ static void mc_rtimer_reset(struct mc_struct *mc)
 	if (__expires && (__expires < expires))
 		expires = __expires;
 #endif
+	if (!mc->started)
+		return;
 
 	if (timer_pending(&mc->rtimer) ?
 			time_after(mc->rtimer.expires, jiffies + expires) :
 				try_to_del_timer_sync(&mc->rtimer) >= 0) {
-		if (!mc->started)
-			return;
 		mod_timer(&mc->rtimer, jiffies + expires);
 		MC_PRINT("Reset Querier Interval ageing timer, expires = %u\n",
 				jiffies_to_msecs(expires) / 1000);
@@ -567,9 +570,8 @@ static void mc_mdb_expired(unsigned long data)
 				mc_fdb_group_destroy(fg);
 		}
 	}
-	spin_unlock_bh(&mc->lock);
-
 	mc_atimer_reset(mc);
+	spin_unlock_bh(&mc->lock);
 }
 
 static struct mc_mdb_entry *mc_mdb_create(struct mc_struct *mc,
@@ -679,6 +681,10 @@ static struct mc_fdb_group *mc_update_mdb(struct mc_struct *mc,
 	mdb = mc_mdb_find(head, group);
 	if (!mdb) {
 		spin_lock_bh(&mc->lock);
+		if (!mc->started) {
+			spin_unlock_bh(&mc->lock);
+			return NULL;
+		}
 		mdb = mc_mdb_find(head, group);
 		if (!mdb) {
 			mdb = mc_mdb_create(mc, head, group);
@@ -695,6 +701,10 @@ static struct mc_fdb_group *mc_update_mdb(struct mc_struct *mc,
 	pg = mc_port_group_find(&mdb->pslist, port);
 	if (!pg) {
 		spin_lock_bh(&mc->lock);
+		if (!mc->started) {
+			spin_unlock_bh(&mc->lock);
+			return NULL;
+		}
 		pg = mc_port_group_find(&mdb->pslist, port);
 		if (!pg) {
 			pg = mc_port_group_create(mdb, port);
@@ -707,6 +717,10 @@ static struct mc_fdb_group *mc_update_mdb(struct mc_struct *mc,
 	fg = mc_fdb_group_find(&pg->fslist, fdb->addr.addr);
 	if (!fg) {
 		spin_lock_bh(&mc->lock);
+		if (!mc->started) {
+			spin_unlock_bh(&mc->lock);
+			return NULL;
+		}
 		fg = mc_fdb_group_find(&pg->fslist, fdb->addr.addr);
 		if (!fg) {
 			fg = mc_fdb_group_create(pg, fdb->addr.addr);
@@ -947,6 +961,11 @@ static void mc_leave_group(struct mc_struct *mc,
 	fg = mc_fdb_group_get(mc, group, skb);
 	if (fg) {
 		spin_lock_bh(&mc->lock);
+		fg = mc_fdb_group_get(mc, group, skb);
+		if (!fg) {
+			spin_unlock_bh(&mc->lock);
+			return;
+		}
 		mdb = fg->pg->mdb;
 		mc_fdb_group_destroy(fg);
 
@@ -1100,6 +1119,10 @@ out:
 	return ret;
 }
 
+/*
+ * mc_source_list_update
+ * This function is called without spin lock protection.
+ */
 static void mc_source_list_update(struct mc_fdb_group *fg,
 				  __u8 *grec, __be32 nsrcs, __be32 grec_size, int filter_mode, int type)
 {
@@ -1163,7 +1186,13 @@ static void mc_source_list_update(struct mc_fdb_group *fg,
 
 	if (fg->filter_mode != old_filter_mode || old_nsrcs != fg->a.nsrcs ||
 			memcmp(old_grec, fg->a.srcs, sizeof(old_grec))) {
-		mod_timer(&fg->pg->mdb->mc->evtimer, jiffies + msecs_to_jiffies(MC_EVENT_DELAY_MS));
+		struct mc_struct *mc;
+
+		mc = fg->pg->mdb->mc;
+		spin_lock_bh(&mc->lock);
+		if (mc->started)
+			mod_timer(&mc->evtimer, jiffies + msecs_to_jiffies(MC_EVENT_DELAY_MS));
+		spin_unlock_bh(&mc->lock);
 	}
 }
 
@@ -1872,6 +1901,10 @@ static void mc_ipv4_query(struct mc_struct *mc, struct sk_buff *skb, void *port)
 	sip.pro = ETH_P_IP;
 
 	spin_lock_bh(&mc->lock);
+	if (!mc->started) {
+		spin_unlock_bh(&mc->lock);
+		return;
+	}
 	qe = mc_querier_entry_find(&rp->igmp_rlist, port);
 	if (!qe || memcmp(&sip, &qe->sip, sizeof sip)) {
 		if (qe) {
@@ -1894,7 +1927,6 @@ update:
 	qe->qrv = qrv;
 	qe->ageing_timer = jiffies;
 out:
-	spin_unlock_bh(&mc->lock);
 
 	if (group) {
 		memset(&mc_group, 0, sizeof mc_group);
@@ -1904,6 +1936,7 @@ out:
 	} else {
 		mc_query_cycle_start(mc, NULL, ETH_P_IP, rp->igmp_root_qe);
 	}
+	spin_unlock_bh(&mc->lock);
 }
 
 #ifdef MC_SUPPORT_MLD
@@ -1952,6 +1985,10 @@ static int mc_ipv6_query(struct mc_struct *mc, struct sk_buff *skb, void *port)
 	sip.pro = ETH_P_IPV6;
 
 	spin_lock_bh(&mc->lock);
+	if (!mc->started) {
+		spin_unlock_bh(&mc->lock);
+		return 0;
+	}
 	qe = mc_querier_entry_find(&rp->mld_rlist, port);
 	if (!qe || memcmp(&sip, &qe->sip, sizeof sip)) {
 		if (qe) {
@@ -1974,8 +2011,6 @@ update:
 	qe->qrv = qrv;
 	qe->ageing_timer = jiffies;
 out:
-	spin_unlock_bh(&mc->lock);
-
 	if (group && !ipv6_addr_any(group)) {
 		memset(&mc_group, 0, sizeof mc_group);
 		mc_ipv6_addr_copy(&mc_group.u.ip6, group);
@@ -1984,6 +2019,8 @@ out:
 	} else {
 		mc_query_cycle_start(mc, NULL, ETH_P_IPV6, rp->mld_root_qe);
 	}
+
+	spin_unlock_bh(&mc->lock);
 	return 0;
 }
 #endif
@@ -2267,7 +2304,7 @@ void mc_fdb_change(__u8 *mac, int event)
 	if (!mac)
 		return;
 
-	mc = MC_DEV_GET(NULL);
+	mc = MC_DEV(NULL);
 	if (!mc)
 		return;
 
@@ -2314,8 +2351,6 @@ void mc_fdb_change(__u8 *mac, int event)
 	default:
 		break;
 	}
-
-	MC_DEV_PUT(mc);
 }
 
 /*
@@ -2336,12 +2371,11 @@ void mc_nbp_change(struct net_bridge_port *p, int event)
 	if (event != RTM_DELLINK)
 		return;
 
-	mc = MC_DEV_GET(p->br->dev);
+	mc = MC_DEV(p->br->dev);
 	if (!mc)
 		return;
 
 	if (!mc->started) {
-		MC_DEV_PUT(mc);
 		return;
 	}
 
@@ -2388,10 +2422,8 @@ void mc_nbp_change(struct net_bridge_port *p, int event)
 		}
 	}
 
-	spin_unlock_bh(&mc->lock);
-
 	mc_rtimer_reset(mc);
-	MC_DEV_PUT(mc);
+	spin_unlock_bh(&mc->lock);
 }
 
 /*
@@ -2421,6 +2453,11 @@ int mc_rcv(struct mc_struct *mc, struct sk_buff *skb)
 	return 0;
 }
 
+/*
+ * mc_rlist_flush
+ * Flush root port list
+ * This funciton must be called with spin lock held
+ */
 static void mc_rlist_flush(struct mc_struct *mc)
 {
 	struct hlist_node *h, *n;
@@ -2440,6 +2477,12 @@ static void mc_rlist_flush(struct mc_struct *mc)
 }
 
 
+
+/*
+ * mc_mdb_flush
+ * Flush mdb
+ * This funciton must be called with spin lock held
+ */
 static void mc_mdb_flush(struct mc_struct *mc)
 {
 	int i;
@@ -2453,54 +2496,40 @@ static void mc_mdb_flush(struct mc_struct *mc)
 	}
 }
 
-/*
- *  When this fucntion returns a valid mc structure, rcu read lock is held
- *  in case mc is freed on another CPU unexpectedly.
- */
+
 struct mc_struct *mc_dev_get(const struct net_device *dev)
 {
 	struct mc_struct *mc;
 
-	rcu_read_lock();
 	mc = rcu_dereference(_g_mcs);
 	if (!mc) {
-		rcu_read_unlock();
 		return NULL;
 	}
 
 	if (!dev)
-		return _g_mcs;
+		return mc;
 
 	if (mc->dev != dev) {
-		rcu_read_unlock();
 		return NULL;
 	}
 
 	return mc;
 }
 
-/*
- * This function must be called pairwise with mc_dev_get
- */
-void mc_dev_put(struct mc_struct *mc)
-{
-	if (!mc) {
-		printk(KERN_ERR "%s: invalid mc!\n", __func__);
-		return;
-	}
-	rcu_read_unlock();
-}
 
 static int mc_dev_register(struct mc_struct *mc)
 {
 	struct mc_struct *oldmc;
 
+	spin_lock_bh(&g_mcs_lock);
 	oldmc = rcu_dereference(_g_mcs);
 	if (oldmc) {
+		spin_unlock_bh(&g_mcs_lock);
 		return -1;
 	}
 
 	rcu_assign_pointer(_g_mcs, mc);
+	spin_unlock_bh(&g_mcs_lock);
 	return 0;
 }
 
@@ -2508,12 +2537,15 @@ static int mc_dev_unregister(struct mc_struct *mc)
 {
 	struct mc_struct *oldmc;
 
+	spin_lock_bh(&g_mcs_lock);
 	oldmc = rcu_dereference(_g_mcs);
 	if (oldmc != mc) {
+		spin_unlock_bh(&g_mcs_lock);
 		return -1;
 	}
 
 	rcu_assign_pointer(_g_mcs, NULL);
+	spin_unlock_bh(&g_mcs_lock);
 	return 0;
 }
 
@@ -2539,14 +2571,15 @@ static int mc_open(struct mc_struct *mc)
 		return 0;
 	}
 
+	spin_lock(&mc->lock);
 	if (mc->started) {
+		spin_unlock(&mc->lock);
 		MC_PRINT(KERN_DEBUG "%s: mc function is already enabled!\n", __func__);
 		return 0;
 	}
 
 	br = netdev_priv(mc->dev);
 
-	spin_lock(&mc->lock);
 	mc->ageing_query = jiffies;
 	mc->startup_queries_sent = 0;
 	mc->started = 1;
@@ -2572,12 +2605,13 @@ static int mc_stop(struct mc_struct *mc)
 		return 0;
 	}
 
+	spin_lock_bh(&mc->lock);
 	if (!mc->started) {
+		spin_unlock_bh(&mc->lock);
 		MC_PRINT(KERN_DEBUG "%s: mc function is already disabled!\n", __func__);
 		return 0;
 	}
 
-	spin_lock_bh(&mc->lock);
 	mc->started = 0;
 
 	mc_mdb_flush(mc);
@@ -2630,10 +2664,12 @@ static void mc_router_cleanup(unsigned long data)
 	if (delay_reset)
 		mc_ipv6_rp_reset(mc, rp);
 #endif
-	spin_unlock_bh(&mc->lock);
 	mod_timer(&mc->rtimer, round_jiffies(next_timer + HZ/4));
-
-	mc_rtimer_reset(mc);
+	/*
+	 * Reset will never happen for this is a running timer
+	 * mc_rtimer_reset(mc);
+	 */
+	spin_unlock_bh(&mc->lock);
 }
 
 static void mc_mdb_query(unsigned long data)
@@ -2866,11 +2902,10 @@ static void mc_event_delay(unsigned long data)
 
 int mc_attach(struct net_device *dev)
 {
-	struct mc_struct *mc = MC_DEV_GET(dev);
+	struct mc_struct *mc = MC_DEV(dev);
 
 	if (mc) {
 		printk(KERN_DEBUG "%s: bridge %s is already attached\n", __func__, dev->name);
-		MC_DEV_PUT(mc);
 		return 0;
 	}
 
@@ -2924,15 +2959,12 @@ int mc_attach(struct net_device *dev)
 			(unsigned long)mc);
 
 
-	spin_lock_bh(&g_mcs_lock);
 	if (mc_dev_register(mc) < 0) {
-		spin_unlock_bh(&g_mcs_lock);
 		kfree(mc);
 		return -1;
 	}
 
 	mc_open(mc);
-	spin_unlock_bh(&g_mcs_lock);
 
 	return 0;
 }
@@ -2941,22 +2973,15 @@ void mc_detach(struct net_device *dev)
 {
 	struct mc_struct *mc;
 
-	spin_lock_bh(&g_mcs_lock);
-	mc = MC_DEV_GET(dev);
+	mc = MC_DEV(dev);
 	if (!mc) {
-		spin_unlock_bh(&g_mcs_lock);
 		return;
 	}
 
 	if (mc_dev_unregister(mc) < 0) {
 		printk(KERN_ERR "%s: mc device has already been unregistered!\n", __func__);
-		MC_DEV_PUT(mc);
-		spin_unlock_bh(&g_mcs_lock);
 		return;
 	}
-
-	MC_DEV_PUT(mc);
-	spin_unlock_bh(&g_mcs_lock);
 
 	/*
 	 * MC struct has been detached, but it may be referenced by other exeuction paths,
@@ -2980,10 +3005,13 @@ static int mc_device_event(struct notifier_block *this, unsigned long event, voi
 	if (!dev)
 		return NOTIFY_DONE;
 
+	rcu_read_lock();
 	/* Get default Mulitcast device */
-	mc = MC_DEV_GET(NULL);
-	if (!mc)
+	mc = MC_DEV(NULL);
+	if (!mc) {
+		rcu_read_unlock();
 		return NOTIFY_DONE;
+	}
 
 	switch (event) {
 	case NETDEV_UNREGISTER:
@@ -2997,7 +3025,7 @@ static int mc_device_event(struct notifier_block *this, unsigned long event, voi
 		break;
 	}
 
-	MC_DEV_PUT(mc);
+	rcu_read_unlock();
 	return NOTIFY_DONE;
 }
 
