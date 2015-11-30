@@ -52,6 +52,7 @@ static inline int os_br_pass_frame_up(struct sk_buff *skb)
 #include <linux/moduleparam.h>
 #include <linux/export.h>
 #include <linux/printk.h>
+/* This function should be called with rcu_read_lock held */
 static inline struct net_bridge_port *os_br_port_get(const struct net_device *dev)
 {
 	struct net_bridge_port *br_port;
@@ -59,9 +60,7 @@ static inline struct net_bridge_port *os_br_port_get(const struct net_device *de
 	if (!dev)
 		return NULL;
 
-	rcu_read_lock();
 	br_port = br_port_get_rcu(dev);
-	rcu_read_unlock();
 
 	return br_port;
 }
@@ -86,6 +85,7 @@ static inline int mc_ipv6_skip_exthdr(const struct sk_buff *skb, int start, u8 *
 #include <net/ipv6.h>
 #include <linux/kernel.h>
 
+/* This function should be called with rcu_read_lock held */
 static inline struct net_bridge_port *os_br_port_get(const struct net_device *dev)
 {
 	struct net_bridge_port *br_port;
@@ -93,9 +93,7 @@ static inline struct net_bridge_port *os_br_port_get(const struct net_device *de
 	if (!dev)
 		return NULL;
 
-	rcu_read_lock();
 	br_port = rcu_dereference(dev->br_port);
-	rcu_read_unlock();
 
 	return br_port;
 }

@@ -449,7 +449,7 @@ static void mc_set_psw_flood(struct mc_struct *mc, void *param, __be32 param_len
 	}
 }
 
-static void mc_netlink_receive(struct sk_buff *__skb)
+static void __mc_netlink_receive(struct sk_buff *__skb)
 {
 	struct net_device *brdev = NULL;
 	struct sk_buff *skb;
@@ -484,7 +484,7 @@ static void mc_netlink_receive(struct sk_buff *__skb)
 			break;
 		}
 
-		if ((mc = MC_DEV_GET(brdev)) == NULL && msgtype != MC_MSG_SET_ENABLE) {
+		if ((mc = MC_DEV(brdev)) == NULL && msgtype != MC_MSG_SET_ENABLE) {
 			printk("%s: mc module is not registered!\n", __func__);
 			msghdr->status = MC_STATUS_FAILURE;
 			dev_put(brdev);
@@ -557,16 +557,16 @@ static void mc_netlink_receive(struct sk_buff *__skb)
 			break;
 		case MC_MSG_SET_ADD_ACL_RULE:
 			{
-				spin_lock(&mc->lock);
+				spin_lock_bh(&mc->lock);
 				mc_acltbl_update(mc, msgdata);
-				spin_unlock(&mc->lock);
+				spin_unlock_bh(&mc->lock);
 			}
 			break;
 		case MC_MSG_SET_FLUSH_ACL_RULE:
 			{
-				spin_lock(&mc->lock);
+				spin_lock_bh(&mc->lock);
 				mc_acltbl_flush(mc, msgdata);
-				spin_unlock(&mc->lock);
+				spin_unlock_bh(&mc->lock);
 			}
 			break;
 		case MC_MSG_SET_CONVERT_ALL:
@@ -591,8 +591,6 @@ static void mc_netlink_receive(struct sk_buff *__skb)
 							t->enable ? "Enable" : "Disable", "all system queries");
 					break;
 				case MC_TIMEOUT_FROM_GROUP_MEMBERSHIP_INTERVAL:
-					if (mc->timeout_gmi_enable == 1 && t->enable == 0)
-						mod_timer(&mc->atimer, jiffies);
 					mc->timeout_gmi_enable = t->enable;
 					MC_PRINT("%s: %s timeout from %s.\n", __func__,
 							t->enable ? "Enable" : "Disable", "group membership interval");
@@ -620,49 +618,45 @@ static void mc_netlink_receive(struct sk_buff *__skb)
 			{
 				struct __mc_param_value *i = (struct __mc_param_value *)msgdata;
 				if (i->val) {
+					spin_lock_bh(&mc->lock);
 					mc->local_query_interval = i->val * HZ;
 					if (timer_pending(&mc->qtimer) ?
 						time_after(mc->qtimer.expires, jiffies + mc->local_query_interval) :
-							try_to_del_timer_sync(&mc->qtimer) >= 0)
-						mod_timer(&mc->qtimer, jiffies + mc->local_query_interval);
+							try_to_del_timer_sync(&mc->qtimer) >= 0) {
+						if (mc->started)
+							mod_timer(&mc->qtimer, jiffies + mc->local_query_interval);
+					}
+					spin_unlock_bh(&mc->lock);
 				}
 				MC_PRINT(KERN_INFO "%s: Set local query interval to %u\n", __func__, i->val);
 			}
 			break;
 		case MC_MSG_SET_PSW_ENCAP:
 			{
-				rcu_read_lock();
 				mc_set_psw_encap(mc, msgdata, msghdr->buf_len);
-				rcu_read_unlock();
 			}
 			break;
 		case MC_MSG_SET_PSW_FLOOD:
 			{
 				struct mc_glist_entry *ghead = NULL;
-				rcu_read_lock();
 				mc_set_psw_flood(mc, msgdata, msghdr->buf_len, &ghead);
-				rcu_read_unlock();
-
-				/*lock free callback*/
 				mc_group_notify(mc, &ghead);
 			}
 			break;
 		case MC_MSG_GET_ACL:
 			{
-				spin_lock(&mc->lock);
+				spin_lock_bh(&mc->lock);
 				if (mc_acltbl_fillbuf(mc, msgdata, msghdr->buf_len,
 						&msghdr->bytes_written, &msghdr->bytes_needed))
 					msghdr->status = MC_STATUS_BUFFER_OVERFLOW;
-				spin_unlock(&mc->lock);
+				spin_unlock_bh(&mc->lock);
 			}
 			break;
 		case MC_MSG_GET_MDB:
 			{
-				rcu_read_lock();
 				if (mc_mdbtbl_fillbuf(mc, msgdata, msghdr->buf_len,
 							&msghdr->bytes_written, &msghdr->bytes_needed))
 					msghdr->status = MC_STATUS_BUFFER_OVERFLOW;
-				rcu_read_unlock();
 			}
 			break;
 		case MC_MSG_SET_ROUTER:
@@ -680,9 +674,6 @@ static void mc_netlink_receive(struct sk_buff *__skb)
 		dev_put(brdev);
 	} while (0);
 
-	if (mc) {
-		MC_DEV_PUT(mc);
-	}
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 7, 0))
 	NETLINK_CB(skb).portid = 0; /* from kernel */
 #else
@@ -691,6 +682,15 @@ static void mc_netlink_receive(struct sk_buff *__skb)
 	NETLINK_CB(skb).dst_group = 0; /* unicast */
 	netlink_unicast(mc_nl_sk, skb, pid, MSG_DONTWAIT);
 }
+
+
+static void mc_netlink_receive(struct sk_buff *__skb)
+{
+	rcu_read_lock();
+	__mc_netlink_receive(__skb);
+	rcu_read_unlock();
+}
+
 
 void mc_netlink_event_send(struct mc_struct *mc, u32 event_type, u32 event_len, void *event_data)
 {
