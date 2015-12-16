@@ -39,7 +39,7 @@
 #include "mc_private.h"
 #include "mc_netlink.h"
 #include "mc_snooping.h"
-
+#include "mc_forward.h"
 
 static struct mc_struct __rcu *_g_mcs = NULL;
 static spinlock_t g_mcs_lock;
@@ -2578,8 +2578,13 @@ static int mc_open(struct mc_struct *mc)
 		return 0;
 	}
 
-	br = netdev_priv(mc->dev);
+	if (mc_forward_init() < 0) {
+		spin_unlock(&mc->lock);
+		MC_PRINT(KERN_ERR "mcs failed to init forwarding hook!\n");
+		return -EINVAL;
+	}
 
+	br = netdev_priv(mc->dev);
 	mc->ageing_query = jiffies;
 	mc->startup_queries_sent = 0;
 	mc->started = 1;
@@ -2613,6 +2618,7 @@ static int mc_stop(struct mc_struct *mc)
 	}
 
 	mc->started = 0;
+	mc_forward_exit();
 
 	mc_mdb_flush(mc);
 	mc_rlist_flush(mc);
@@ -2964,9 +2970,16 @@ int mc_attach(struct net_device *dev)
 		return -1;
 	}
 
-	mc_open(mc);
+	if (mc_open(mc) < 0) {
+		goto fail;
+	}
 
 	return 0;
+
+fail:
+	mc_dev_unregister(mc);
+	kfree(mc);
+	return -1;
 }
 
 void mc_detach(struct net_device *dev)

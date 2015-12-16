@@ -29,8 +29,6 @@
 #include "mc_snooping.h"
 #include "mc_osdep.h"
 
-static br_multicast_handle_hook_t *saved_multicast_handle_hook;
-
 static void mc_retag(void *iph, __be16 etype, __be32 dscp)
 {
 	__be32 _dscp = MC_DSCP(dscp);
@@ -407,14 +405,27 @@ static int mc_process(const struct net_bridge_port *src, struct sk_buff *skb)
 
 int mc_forward_init(void)
 {
-	saved_multicast_handle_hook = rcu_dereference(br_multicast_handle_hook);
-	rcu_assign_pointer(br_multicast_handle_hook, mc_process);
+	br_multicast_handle_hook_t *br_mc_handler;
 
+	br_mc_handler = rcu_dereference(br_multicast_handle_hook);
+	if (br_mc_handler != NULL) {
+		return -1;
+	}
+
+	rcu_assign_pointer(br_multicast_handle_hook, mc_process);
 	return 0;
 }
 
 void mc_forward_exit(void)
 {
-	rcu_assign_pointer(br_multicast_handle_hook, saved_multicast_handle_hook);
+	br_multicast_handle_hook_t *br_mc_handler;
+
+	br_mc_handler = rcu_dereference(br_multicast_handle_hook);
+	if (br_mc_handler != mc_process) {
+		printk("bridge multicast handler[%p] changed unexpectedly\n", br_mc_handler);
+		return;
+	}
+
+	rcu_assign_pointer(br_multicast_handle_hook, NULL);
 }
 
