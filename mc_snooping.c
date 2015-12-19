@@ -2197,12 +2197,12 @@ static int mc_ipv6_rcv(struct mc_struct *mc, struct sk_buff *skb)
 
 	len -= offset - sizeof(*ip6h);
 
+	err = -EINVAL;
+	if (unlikely(!pskb_may_pull(skb2, offset + sizeof(*icmp6h))))
+		goto out;
+
 	__skb_pull(skb2, offset);
 	skb_reset_transport_header(skb2);
-
-	err = -EINVAL;
-	if (unlikely(!pskb_may_pull(skb2, sizeof(*icmp6h))))
-		goto out;
 
 	icmp6h = icmp6_hdr(skb2);
 
