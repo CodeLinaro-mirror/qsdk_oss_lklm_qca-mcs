@@ -2571,15 +2571,15 @@ static int mc_open(struct mc_struct *mc)
 		return 0;
 	}
 
-	spin_lock(&mc->lock);
+	spin_lock_bh(&mc->lock);
 	if (mc->started) {
-		spin_unlock(&mc->lock);
+		spin_unlock_bh(&mc->lock);
 		MC_PRINT(KERN_DEBUG "%s: mc function is already enabled!\n", __func__);
 		return 0;
 	}
 
 	if (mc_forward_init() < 0) {
-		spin_unlock(&mc->lock);
+		spin_unlock_bh(&mc->lock);
 		MC_PRINT(KERN_ERR "mcs failed to init forwarding hook!\n");
 		return -EINVAL;
 	}
@@ -2593,7 +2593,7 @@ static int mc_open(struct mc_struct *mc)
 	mod_timer(&mc->qtimer, jiffies + br->forward_delay);
 	mod_timer(&mc->atimer, jiffies + br->forward_delay);
 	mod_timer(&mc->rtimer, jiffies + br->forward_delay);
-	spin_unlock(&mc->lock);
+	spin_unlock_bh(&mc->lock);
 
 	return 0;
 }
