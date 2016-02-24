@@ -21,6 +21,12 @@
 #include <linux/netfilter_bridge.h>
 #include <br_private.h>
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 0, 0))
+static inline int os_br_pass_frame_up(struct sk_buff *skb)
+{
+	return br_pass_frame_up(skb);
+}
+#else
 static inline int os_br_pass_frame_up(struct sk_buff *skb)
 {
 	struct net_device *indev, *brdev = BR_INPUT_SKB_CB(skb)->brdev;
@@ -46,7 +52,7 @@ static inline int os_br_pass_frame_up(struct sk_buff *skb)
 	return NF_HOOK(NFPROTO_BRIDGE, NF_BR_LOCAL_IN, skb, indev, NULL,
 		   netif_receive_skb);
 }
-
+#endif
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0))
 #include <linux/moduleparam.h>
