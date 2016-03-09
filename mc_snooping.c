@@ -279,8 +279,14 @@ static void mc_send_query(struct mc_struct *mc, void *port,
 	MC_PRINT("%s: Send query to port %s to client "MC_MAC_STR" \n",
 			__func__,  skb->dev->name, MC_MAC_FMT(mac));
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 4, 0))
+	NF_HOOK(PF_BRIDGE, NF_BR_LOCAL_OUT, dev_net(skb->dev), NULL,
+			skb, NULL, skb->dev,
+			br_dev_queue_push_xmit);
+#else
 	NF_HOOK(PF_BRIDGE, NF_BR_LOCAL_OUT, skb, NULL, skb->dev,
 			dev_queue_xmit);
+#endif
 }
 
 static void mc_ipv4_rp_reset(struct mc_struct *mc, struct mc_router_port *rp)
