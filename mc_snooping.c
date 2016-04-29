@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, 2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012, 2015, 2016 The Linux Foundation. All rights reserved.
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
  * copyright notice and this permission notice appear in all copies.
@@ -2676,7 +2676,8 @@ static void mc_router_cleanup(unsigned long data)
 	if (delay_reset)
 		mc_ipv6_rp_reset(mc, rp);
 #endif
-	mod_timer(&mc->rtimer, round_jiffies(next_timer + HZ/4));
+	if( mc->started )
+		mod_timer(&mc->rtimer, round_jiffies(next_timer + HZ/4));
 	/*
 	 * Reset will never happen for this is a running timer
 	 * mc_rtimer_reset(mc);
@@ -2724,7 +2725,8 @@ static void mc_mdb_query(unsigned long data)
 		}
 	}
 out:
-	mod_timer(&mc->qtimer, round_jiffies(next_timer + HZ/4));
+	if( mc->started )
+		mod_timer(&mc->qtimer, round_jiffies(next_timer + HZ/4));
 }
 
 static void mc_mdb_cleanup(unsigned long data)
@@ -2742,6 +2744,7 @@ static void mc_mdb_cleanup(unsigned long data)
 		mld_expire_time = mld_root_qe->max_resp_time + mld_root_qe->qqic * mld_root_qe->qrv;
 #endif
 
+	spin_lock_bh(&mc->lock);
 	if (!mc->timeout_gmi_enable) {
 		next_timer = now + mc->membership_interval;
 		goto out;
@@ -2755,8 +2758,6 @@ static void mc_mdb_cleanup(unsigned long data)
 #else
 	next_timer = now + igmp_expire_time;
 #endif
-
-	spin_lock_bh(&mc->lock);
 	for (i = 0; i < MC_HASH_SIZE; i++) {
 		struct mc_mdb_entry *mdb;
 		struct hlist_node *mdbh;
@@ -2811,9 +2812,10 @@ static void mc_mdb_cleanup(unsigned long data)
 #endif
 		}
 	}
-	spin_unlock_bh(&mc->lock);
 out:
-	mod_timer(&mc->atimer, round_jiffies(next_timer + HZ/4));
+	if( mc->started )
+		mod_timer(&mc->atimer, round_jiffies(next_timer + HZ/4));
+	spin_unlock_bh(&mc->lock);
 }
 
 static void mc_acl_table_init(struct mc_struct *mc)
