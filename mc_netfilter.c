@@ -64,12 +64,13 @@ static unsigned int mc_pre_routing_hook(unsigned int hooknum, struct sk_buff *sk
 	u8 dscp;
 
 	rcu_read_lock();
-	mc = MC_DEV(in);
-	if (!mc)
-		goto out;
 
 	if (skb->pkt_type != PACKET_HOST ||
 		(port = os_br_port_get(in)) == NULL)
+		goto out;
+
+	mc = MC_DEV(port->br->dev);
+	if (!mc)
 		goto out;
 
 	dscp = MC_DSCP(mc->dscp) & (~INET_ECN_MASK);
@@ -136,17 +137,19 @@ static unsigned int mc_forward_hook(unsigned int hooknum, struct sk_buff *skb,
 #endif
 
 	rcu_read_lock();
-	mc = MC_DEV(out);
-
-	if (!mc) {
-		goto accept;
-	}
 
 	if (MC_SKB_CB(skb)->type != MC_LEAVE &&
-			MC_SKB_CB(skb)->type != MC_REPORT)
+		MC_SKB_CB(skb)->type != MC_REPORT)
 		goto accept;
 
 	if ((port = os_br_port_get(in)) == NULL)
+		goto accept;
+
+	if ((port = os_br_port_get(out)) == NULL)
+		goto accept;
+
+	mc = MC_DEV(port->br->dev);
+	if (!mc)
 		goto accept;
 
 	/* Report/Leave forward */
@@ -165,13 +168,13 @@ static unsigned int mc_forward_hook(unsigned int hooknum, struct sk_buff *skb,
 				if (((struct net_bridge_port *)qe->port)->dev == out)
 					goto accept;
 			}
-			goto drop;
 		}
+		goto drop;
 	} else if (mc->rp.type == MC_RTPORT_SPECIFY) {
 		port = mc_br_port_get(mc->rp.ifindex);
 		if (!port || port->dev != out)
 			goto drop;
-	} else {
+	} else if (mc->rp.type == MC_RTPORT_DROP) {
 		goto drop;
 	}
 accept:
@@ -194,7 +197,7 @@ static struct nf_hook_ops mc_hook_ops[] __read_mostly = {
 	},
 	{
 		.pf = NFPROTO_BRIDGE,
-		.priority = 1,
+		.priority = NF_BR_PRI_BRNF - 2,
 		.hooknum = NF_BR_FORWARD,
 		.hook = mc_forward_hook,
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 4, 0))
