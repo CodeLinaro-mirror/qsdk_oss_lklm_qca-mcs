@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, 2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012, 2015, 2016 The Linux Foundation. All rights reserved.
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
  * copyright notice and this permission notice appear in all copies.
@@ -20,6 +20,7 @@
 #include <net/ip.h>
 #include <net/inet_ecn.h>
 #include <linux/netfilter_bridge.h>
+#include <linux/igmp.h>
 
 #include "mc_snooping.h"
 #include "mc_private.h"
@@ -64,12 +65,13 @@ static unsigned int mc_pre_routing_hook(unsigned int hooknum, struct sk_buff *sk
 	u8 dscp;
 
 	rcu_read_lock();
-	mc = MC_DEV(in);
-	if (!mc)
-		goto out;
 
 	if (skb->pkt_type != PACKET_HOST ||
 		(port = os_br_port_get(in)) == NULL)
+		goto out;
+
+	mc = MC_DEV(port->br->dev);
+	if (!mc)
 		goto out;
 
 	dscp = MC_DSCP(mc->dscp) & (~INET_ECN_MASK);
@@ -113,6 +115,103 @@ out:
 	return NF_ACCEPT;
 }
 
+static bool mc_is_ipv4_report_or_leave(struct sk_buff *skb)
+{
+	__be32 len, offset;
+	struct iphdr *iph;
+	struct igmphdr *ih;
+
+	if (unlikely(!pskb_may_pull(skb, sizeof(struct iphdr))))
+		return false;
+
+	iph = ip_hdr(skb);
+	if (iph->ihl < 5 || iph->version != 4)
+		return false;
+
+	if (iph->protocol != IPPROTO_IGMP)
+		return false;
+
+	len = ntohs(iph->tot_len);
+	if (skb->len < len || len < (iph->ihl*4))
+		return false;
+
+	offset = skb_network_offset(skb) + ip_hdrlen(skb);
+	if (unlikely(!pskb_may_pull(skb, offset + sizeof(*ih))))
+		return false;
+
+	skb_set_transport_header(skb, offset);
+	ih = igmp_hdr(skb);
+
+	switch (ih->type) {
+	case IGMP_HOST_MEMBERSHIP_REPORT:
+	case IGMPV2_HOST_MEMBERSHIP_REPORT:
+	case IGMPV3_HOST_MEMBERSHIP_REPORT:
+	case IGMP_HOST_LEAVE_MESSAGE:
+		return true;
+	}
+
+	return false;
+}
+static bool mc_is_ipv6_report_or_leave(struct sk_buff *skb)
+{
+	struct ipv6hdr *ip6h;
+	struct icmp6hdr *icmp6h;
+	u8 nexthdr;
+	unsigned len;
+	int offset;
+
+	if (unlikely(!pskb_may_pull(skb, sizeof(*ip6h))))
+		return false;
+
+	ip6h = ipv6_hdr(skb);
+	/*
+	* We're interested in MLD messages only.
+	*	- Version is 6
+	*	- MLD has always Router Alert hop-by-hop
+	*	option
+	*	- But we do not support
+	*	jumbrograms.
+	*/
+	if (ip6h->version != 6
+		|| ip6h->nexthdr != IPPROTO_HOPOPTS
+		|| ip6h->payload_len ==	0)
+		return false;
+	len = ntohs(ip6h->payload_len);
+	if (unlikely(skb->len < len))
+		return false;
+
+	nexthdr = ip6h->nexthdr;
+	offset = mc_ipv6_skip_exthdr(skb, sizeof(*ip6h), &nexthdr);
+	if (offset < 0 || nexthdr != IPPROTO_ICMPV6)
+		return false;
+
+	/* Okay, we found ICMPv6 header */
+	if (unlikely(!pskb_may_pull(skb, offset + sizeof(*icmp6h))))
+		return false;
+
+	skb_set_transport_header(skb, offset);
+	icmp6h = icmp6_hdr(skb);
+	switch (icmp6h->icmp6_type) {
+	case ICMPV6_MGM_REPORT:
+	case ICMPV6_MLD2_REPORT:
+		return true;
+	}
+	return false;
+}
+
+static bool mc_is_report_or_leave(struct sk_buff *skb)
+{
+	switch (ntohs(skb->protocol)) {
+	case ETH_P_IP:
+		return mc_is_ipv4_report_or_leave(skb);
+#ifdef MC_SUPPORT_MLD
+	case ETH_P_IPV6:
+		return mc_is_ipv6_report_or_leave(skb);
+#endif
+	}
+	return false;
+
+}
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 3, 0))
 static unsigned int mc_forward_hook(void *priv,
 				    struct sk_buff *skb,
@@ -136,17 +235,21 @@ static unsigned int mc_forward_hook(unsigned int hooknum, struct sk_buff *skb,
 #endif
 
 	rcu_read_lock();
-	mc = MC_DEV(out);
 
-	if (!mc) {
-		goto accept;
-	}
-
-	if (MC_SKB_CB(skb)->type != MC_LEAVE &&
-			MC_SKB_CB(skb)->type != MC_REPORT)
+	if (skb->pkt_type != PACKET_MULTICAST)
 		goto accept;
 
 	if ((port = os_br_port_get(in)) == NULL)
+		goto accept;
+
+	if ((port = os_br_port_get(out)) == NULL)
+		goto accept;
+
+	mc = MC_DEV(port->br->dev);
+	if (!mc || !mc->started)
+		goto accept;
+
+	if(!mc_is_report_or_leave(skb))
 		goto accept;
 
 	/* Report/Leave forward */
@@ -165,13 +268,13 @@ static unsigned int mc_forward_hook(unsigned int hooknum, struct sk_buff *skb,
 				if (((struct net_bridge_port *)qe->port)->dev == out)
 					goto accept;
 			}
-			goto drop;
 		}
+		goto drop;
 	} else if (mc->rp.type == MC_RTPORT_SPECIFY) {
 		port = mc_br_port_get(mc->rp.ifindex);
 		if (!port || port->dev != out)
 			goto drop;
-	} else {
+	} else if (mc->rp.type == MC_RTPORT_DROP) {
 		goto drop;
 	}
 accept:
