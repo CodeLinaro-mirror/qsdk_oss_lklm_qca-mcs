@@ -655,19 +655,21 @@ static struct mc_fdb_group *mc_update_fdb_group(struct mc_struct *mc,
 			continue;
 
 	/* If network topology changed, the host should re-join the group */
+		spin_lock_bh(&mc->lock);
 		os_hlist_for_each_entry_rcu(fg, fgh, &pg->fslist, fslist) {
 			if (!compare_ether_addr(mac, fg->mac)) {
 				if (pg->port != port) {
-					spin_lock_bh(&mc->lock);
 					mc_fdb_group_destroy(fg);
 					spin_unlock_bh(&mc->lock);
 					return NULL;
 				}
 				pg->ageing_timer = now;
 				fg->ageing_timer = now;
+				spin_unlock_bh(&mc->lock);
 				return fg;
 			}
 		}
+		spin_unlock_bh(&mc->lock);
 	}
 	return NULL;
 }
