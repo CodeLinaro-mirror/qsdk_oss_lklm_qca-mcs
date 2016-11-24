@@ -1330,7 +1330,7 @@ static int mc_ipv4_igmp3_report(struct mc_struct *mc,
 
 		MC_SKB_CB(skb)->type = MC_REPORT;
 		if (mc_find_acl_rule(&mc->igmp_acl, group, NULL,
-					eh->h_dest, MC_ACL_RULE_NON_SNOOPING) < 0 ||
+				eh->h_dest, MC_ACL_RULE_NON_SNOOPING) ||
 				!(fg = mc_ipv4_report(mc, group, skb)) ||
 				!(mdb = MC_SKB_CB(skb)->mdb)) {
 			prev_offset = len;
@@ -1625,7 +1625,7 @@ static int mc_ipv6_mld2_report(struct mc_struct *mc, struct sk_buff *skb)
 
 		MC_SKB_CB(skb)->type = MC_REPORT;
 		if (mc_find_acl_rule(&mc->mld_acl, 0, (void *)&grec->grec_mca,
-					eh->h_dest, MC_ACL_RULE_NON_SNOOPING) < 0 ||
+				eh->h_dest, MC_ACL_RULE_NON_SNOOPING) ||
 				!(fg = mc_ipv6_report(mc, &grec->grec_mca, skb)) ||
 				!(mdb = MC_SKB_CB(skb)->mdb)) {
 			prev_offset = len;
