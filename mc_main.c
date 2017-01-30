@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, 2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012, 2015, 2017 The Linux Foundation. All rights reserved.
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
  * copyright notice and this permission notice appear in all copies.
@@ -29,14 +29,11 @@ static int __init mc_init(void)
 	if (mc_netfilter_init())
 		goto err1;
 
-	if (mc_snooping_init())
-		goto err2;
+	mc_snooping_init();
 
 	printk("QCA multicast snooping installed successfully\n");
 	return 0;
 
-err2:
-	mc_netfilter_exit();
 err1:
 	mc_netlink_exit();
 err0:

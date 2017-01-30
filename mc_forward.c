@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, 2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012, 2015, 2017 The Linux Foundation. All rights reserved.
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
  * copyright notice and this permission notice appear in all copies.
@@ -45,6 +45,9 @@ static void mc_retag(void *iph, __be16 etype, __be32 dscp)
 
 static int mc_encap_check_source(int pro, void *srcs, int offset, void *iph)
 {
+	if (offset > MC_DEF_IP6_SIZE) {
+		return -1;
+	}
 	if (pro == htons(ETH_P_IP)) {
 		return (*((__be32 *)srcs + offset) == ((struct iphdr *)iph)->saddr);
 	}
