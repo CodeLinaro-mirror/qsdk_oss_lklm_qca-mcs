@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, 2015, 2016 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012, 2015-2017 The Linux Foundation. All rights reserved.
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
  * copyright notice and this permission notice appear in all copies.
@@ -1217,6 +1217,9 @@ static int mc_ipv4_source_list_filter(struct mc_mdb_entry *mdb,
 		return 0;
 
 	old_grec_nsrcs = grec_nsrcs = ntohs(grec->grec_nsrcs);
+	if (grec_nsrcs > MC_RT_SRC_MAX || grec_nsrcs < 0) {
+		return 0;
+	}
 
 	while (m < grec_nsrcs) {
 		n = 0;
@@ -1375,9 +1378,6 @@ static int mc_ipv4_igmp3_report(struct mc_struct *mc,
 				break;
 			}
 
-			if (!mdb->filter_mode)
-				mdb->filter_mode = IGMPV3_MODE_IS_INCLUDE;
-
 			/* CHECK X - A */
 			filter_num = mc_ipv4_source_list_filter(mdb, grec, (__be32 *)tmp.srcs, tmp.nsrcs);
 			break;
@@ -1474,7 +1474,7 @@ static int mc_ipv4_igmp3_report(struct mc_struct *mc,
 			continue;
 		}
 
-		if (!filter_num || (filter_num == ~0 && (!mdb || !atomic_read(&mdb->users)))) {
+		if (!filter_num || (filter_num == ~0 && !atomic_read(&mdb->users))) {
 			prev_offset = len;
 			continue;
 		}
@@ -1668,9 +1668,6 @@ static int mc_ipv6_mld2_report(struct mc_struct *mc, struct sk_buff *skb)
 				break;
 			}
 
-			if (!mdb->filter_mode)
-				mdb->filter_mode = MLD2_MODE_IS_INCLUDE;
-
 			/* CHECK X - A */
 			filter_num = mc_ipv6_source_list_filter(mdb, grec, (struct in6_addr *)tmp.srcs, tmp.nsrcs);
 			break;
@@ -1769,7 +1766,7 @@ static int mc_ipv6_mld2_report(struct mc_struct *mc, struct sk_buff *skb)
 			continue;
 		}
 
-		if (!filter_num || (filter_num == ~0 && (!mdb || !atomic_read(&mdb->users)))) {
+		if (!filter_num || (filter_num == ~0 && !atomic_read(&mdb->users))) {
 			prev_offset = len;
 			continue;
 		}

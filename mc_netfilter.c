@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, 2015, 2016 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012, 2015-2017 The Linux Foundation. All rights reserved.
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
  * copyright notice and this permission notice appear in all copies.
@@ -81,7 +81,7 @@ static unsigned int mc_pre_routing_hook(unsigned int hooknum, struct sk_buff *sk
 		{
 			const struct iphdr *iph = ip_hdr(skb);
 			if (ipv4_is_multicast(iph->daddr) && (!mc->enable_retag ||
-						(mc->enable_retag && (ipv4_get_dsfield(iph) == dscp)))) {
+						ipv4_get_dsfield(iph) == dscp)) {
 				ip_eth_mc_map(iph->daddr, eh->h_dest);
 
 				if (mc->debug && printk_ratelimit()) {
@@ -97,7 +97,7 @@ static unsigned int mc_pre_routing_hook(unsigned int hooknum, struct sk_buff *sk
 		{
 			struct ipv6hdr *iph6 = ipv6_hdr(skb);
 			if (ipv6_addr_is_multicast(&iph6->daddr) && (!mc->enable_retag ||
-						(mc->enable_retag && (ipv6_get_dsfield(iph6) == dscp)))) {
+						ipv6_get_dsfield(iph6) == dscp)) {
 				ipv6_eth_mc_map(&iph6->daddr, eh->h_dest);
 
 				if (mc->debug && printk_ratelimit()) {
