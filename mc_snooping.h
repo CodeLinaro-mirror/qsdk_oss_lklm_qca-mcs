@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, 2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012, 2015, 2017 The Linux Foundation. All rights reserved.
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
  * copyright notice and this permission notice appear in all copies.
@@ -22,7 +22,8 @@ int __init mc_snooping_init(void);
 void mc_snooping_exit(void);
 struct mc_struct *mc_dev_get(const struct net_device *dev);
 void mc_dev_put(struct mc_struct *mc);
-int mc_rcv(struct mc_struct *mc, struct sk_buff *skb);
+int mc_rcv(struct mc_struct *mc, struct sk_buff *skb,
+	struct net_bridge_fdb_entry *fdb, const struct net_bridge_port *port);
 int mc_find_acl_rule(struct mc_acl_rule_table *acl, __be32 in4, void *in6, __u8 *mac, __be32 rule);
 int mc_group_hash(__be32 mdb_salt, __be32 group);
 struct mc_mdb_entry *mc_mdb_find(struct hlist_head *head, struct mc_ip *group);

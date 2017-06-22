@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, 2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012, 2015, 2017 The Linux Foundation. All rights reserved.
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
  * copyright notice and this permission notice appear in all copies.
@@ -148,7 +148,7 @@ struct mc_querier_entry {
 	struct hlist_node rlist;	/* attach to router port list */
 	struct rcu_head rcu;
 	unsigned long ageing_timer;
-	void *port;
+	const void *port;
 	struct mc_ip sip;
 	unsigned long max_resp_time;	/* Max Resp Code */
 	unsigned long qqic;	/* Querier's Query Interval Code */
@@ -298,12 +298,11 @@ enum {
 };
 
 struct mc_skb_cb {
-	int igmp;		/* nonzero indicator the skb is an IGMP packet */
-	int type;		/* MC_REPORT or MC_LEAVE */
-	int non_snoop;		/* nonzero indicator the skb is an snooping packet */
+	unsigned char igmp;		/* nonzero indicator the skb is an IGMP packet */
+	unsigned char type;		/* MC_REPORT or MC_LEAVE */
+	unsigned char non_snoop;	/* nonzero indicator the skb is an snooping packet */
+	unsigned char reserveed;	/* reserved for furtue using aligned to 32 */
 	void *mdb;		/* pointed to mdb entry */
-	void *fdb;		/* pointed to fdb entry */
-	void *port;		/* pointed to port entry */
 };
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0))

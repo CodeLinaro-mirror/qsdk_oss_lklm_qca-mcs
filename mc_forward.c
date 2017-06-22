@@ -357,7 +357,7 @@ static int __mc_process(const struct net_bridge_port *src, struct sk_buff *skb)
 {
 	struct net_bridge *br;
 	struct mc_struct *mc;
-	void *fdb;
+	struct net_bridge_fdb_entry *fdb;
 	int  ret;
 
 	mc = MC_DEV(BR_INPUT_SKB_CB(skb)->brdev);
@@ -382,10 +382,7 @@ static int __mc_process(const struct net_bridge_port *src, struct sk_buff *skb)
 		return -EINVAL;
 	}
 
-	MC_SKB_CB(skb)->fdb = fdb;
-	MC_SKB_CB(skb)->port = (void *)src;
-
-	if (mc_rcv(mc, skb)) {
+	if (mc_rcv(mc, skb, fdb, src)) {
 		kfree_skb(skb);
 		return 0;
 	}
