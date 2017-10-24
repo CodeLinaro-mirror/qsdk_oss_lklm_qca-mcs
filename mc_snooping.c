@@ -640,7 +640,7 @@ static struct mc_fdb_group *mc_fdb_group_get(struct mc_struct *mc,
 
 static struct mc_fdb_group *mc_update_fdb_group(struct mc_struct *mc,
 		struct hlist_head *pslist,
-		__u8 *mac, __be32 now, const struct net_bridge_port *port)
+		__u8 *mac, unsigned long now, const struct net_bridge_port *port)
 {
 	struct mc_port_group *pg;
 	struct hlist_node *pgh;
@@ -680,7 +680,7 @@ static struct mc_fdb_group *mc_update_mdb(struct mc_struct *mc,
 			struct net_bridge_fdb_entry *fdb,
 			const struct net_bridge_port *port)
 {
-	__be32 now = jiffies;
+	unsigned long now = jiffies;
 	struct mc_mdb_entry *mdb;
 	struct mc_port_group *pg;
 	struct mc_fdb_group *fg;

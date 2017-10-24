@@ -227,7 +227,7 @@ out:
 static int mc_mdbtbl_fillbuf(struct mc_struct *mc, void *buf,
 			     __be32 buflen, __be32 *bytes_written, __be32 *bytes_needed)
 {
-	__be32 now = jiffies;
+	unsigned long now = jiffies;
 	struct __mc_mdb_entry *entry = buf;
 	int i, total = 0, num = 0, num_entrys, ret = 0;
 
