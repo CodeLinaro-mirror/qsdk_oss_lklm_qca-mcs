@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, 2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012, 2015, 2018 The Linux Foundation. All rights reserved.
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
  * copyright notice and this permission notice appear in all copies.
@@ -460,7 +460,7 @@ static void __mc_netlink_receive(struct sk_buff *__skb)
 	struct mc_struct *mc = NULL;
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 10, 0))
-	if ((skb = skb_clone(__skb, GFP_KERNEL)) == NULL)
+	if ((skb = skb_clone(__skb, GFP_ATOMIC)) == NULL)
 #else
 	if ((skb = skb_get(__skb)) == NULL)
 #endif
