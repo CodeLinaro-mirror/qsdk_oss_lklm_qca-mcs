@@ -165,14 +165,14 @@ static int mc_acltbl_fillbuf(struct mc_struct *mc, void *buf,
 			     __be32 buflen, __be32 *bytes_written, __be32 *bytes_needed)
 {
 	struct __mc_param_acl_rule *entry = buf;
-	int i, total = 0, num = 0, num_entrys, ret = 0;
+	int i, total = 0, num = 0, num_entries, ret = 0;
 	struct mc_param_pattern *p = &mc->igmp_acl.patterns[0];
 
-	num_entrys = buflen / sizeof(*entry);
+	num_entries = buflen / sizeof(*entry);
 
 	for (i = 0; i < mc->igmp_acl.pattern_count; i++) {
 		total++;
-		if (num >= num_entrys) {
+		if (num >= num_entries) {
 			ret = -EAGAIN;
 			continue;
 		}
@@ -194,7 +194,7 @@ static int mc_acltbl_fillbuf(struct mc_struct *mc, void *buf,
 	p = &mc->mld_acl.patterns[0];
 	for (i = 0; i < mc->mld_acl.pattern_count; i++) {
 		total++;
-		if (num >= num_entrys) {
+		if (num >= num_entries) {
 			ret = -EAGAIN;
 			continue;
 		}
@@ -224,14 +224,77 @@ out:
 }
 
 /* call with rcu_read_lock() */
+static int mc_rtports_fillbuf(struct mc_struct *mc, void *buf,
+			     __be32 buflen, __be32 *bytes_written, __be32 *bytes_needed)
+{
+	struct __mc_rtport_entry *entry = buf;
+	struct hlist_head *rhead = NULL;
+	int num_entries, total = 0, num = 0, ret = 0;
+
+	num_entries = buflen / sizeof(*entry);
+
+	rhead = &mc->rp.igmp_rlist;
+	if (!hlist_empty(rhead)) {
+		struct mc_querier_entry *qe;
+		struct hlist_node *h;
+		os_hlist_for_each_entry_rcu(qe, h, rhead, rlist) {
+			total++;
+			if (num >= num_entries) {
+				ret =  -EAGAIN;
+				continue;
+
+			}
+			entry->ifindex = ((struct net_bridge_port *)qe->port)->dev->ifindex;
+			entry->ipv4 = 1;
+			num++;
+			entry++;
+		}
+	}
+
+#ifdef MC_SUPPORT_MLD
+	rhead = &mc->rp.mld_rlist;
+	if (!hlist_empty(rhead)) {
+		struct mc_querier_entry *qe;
+		struct hlist_node *h;
+		os_hlist_for_each_entry_rcu(qe, h, rhead, rlist) {
+			total++;
+			if (num >= num_entries) {
+				ret =  -EAGAIN;
+				continue;
+
+			}
+			entry->ifindex = ((struct net_bridge_port *)(qe->port))->dev->ifindex;
+			entry->ipv4 = 0;
+			num++;
+			entry++;
+		}
+
+	}
+#endif
+
+	if (bytes_written)
+		*bytes_written = num * sizeof(*entry);
+
+	if (bytes_needed) {
+		if (ret == -EAGAIN)
+			*bytes_needed = total * sizeof(*entry);
+		else
+			*bytes_needed = 0;
+	}
+	return ret;
+
+
+}
+
+/* call with rcu_read_lock() */
 static int mc_mdbtbl_fillbuf(struct mc_struct *mc, void *buf,
 			     __be32 buflen, __be32 *bytes_written, __be32 *bytes_needed)
 {
 	unsigned long now = jiffies;
 	struct __mc_mdb_entry *entry = buf;
-	int i, total = 0, num = 0, num_entrys, ret = 0;
+	int i, total = 0, num = 0, num_entries, ret = 0;
 
-	num_entrys = buflen / sizeof(*entry);
+	num_entries = buflen / sizeof(*entry);
 
 	for (i = 0; i < MC_HASH_SIZE; i++) {
 		struct mc_mdb_entry *mdb;
@@ -253,7 +316,7 @@ static int mc_mdbtbl_fillbuf(struct mc_struct *mc, void *buf,
 
 				os_hlist_for_each_entry_rcu(fg, fgh, &pg->fslist, fslist) {
 					total++;
-					if (num >= num_entrys) {
+					if (num >= num_entries) {
 						ret = -EAGAIN;
 						continue;
 					}
@@ -664,6 +727,13 @@ static void __mc_netlink_receive(struct sk_buff *__skb)
 				struct __mc_param_value *e = (struct __mc_param_value *)msgdata;
 				mc->multicast_router = e->val;
 				MC_PRINT(KERN_INFO "%s: %s multicast router.\n", __func__, e->val ? "Enable" : "Disable");
+			}
+			break;
+		case MC_MSG_GET_ROUTER_PORT:
+			{
+				if (mc_rtports_fillbuf(mc, msgdata, msghdr->buf_len,
+							&msghdr->bytes_written, &msghdr->bytes_needed))
+					msghdr->status = MC_STATUS_BUFFER_OVERFLOW;
 			}
 			break;
 		default:

@@ -46,6 +46,7 @@ enum {
 	MC_MSG_GET_ACL,
 	MC_MSG_GET_MDB,
 	MC_MSG_SET_ROUTER,
+	MC_MSG_GET_ROUTER_PORT,
 	MC_MSG_MAX
 };
 
@@ -168,6 +169,11 @@ struct __mc_group {
 		u_int8_t ip6[MC_DEF_IP6_SIZE];
 	} u;
 };
+
+struct __mc_rtport_entry {
+	u_int32_t ifindex;
+	u_int32_t ipv4;
+} __attribute__ ((packed));
 
 struct __mc_mdb_entry {
 	struct __mc_group group;
