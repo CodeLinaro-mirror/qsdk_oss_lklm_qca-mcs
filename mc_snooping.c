@@ -656,21 +656,17 @@ static struct mc_fdb_group *mc_update_fdb_group(struct mc_struct *mc,
 			continue;
 
 	/* If network topology changed, the host should re-join the group */
-		spin_lock_bh(&mc->lock);
 		os_hlist_for_each_entry_rcu(fg, fgh, &pg->fslist, fslist) {
 			if (!compare_ether_addr(mac, fg->mac)) {
 				if (pg->port != port) {
 					mc_fdb_group_destroy(fg);
-					spin_unlock_bh(&mc->lock);
 					return NULL;
 				}
 				pg->ageing_timer = now;
 				fg->ageing_timer = now;
-				spin_unlock_bh(&mc->lock);
 				return fg;
 			}
 		}
-		spin_unlock_bh(&mc->lock);
 	}
 	return NULL;
 }
@@ -687,63 +683,47 @@ static struct mc_fdb_group *mc_update_mdb(struct mc_struct *mc,
 	struct hlist_head *head =
 		&mc->hash[mc_group_hash(mc->salt, group->u.ip4)];
 
+	if (!mc->started) {
+		return NULL;
+	}
+	spin_lock_bh(&mc->lock);
 	mdb = mc_mdb_find(head, group);
 	if (!mdb) {
-		spin_lock_bh(&mc->lock);
-		if (!mc->started) {
+		mdb = mc_mdb_create(mc, head, group);
+		if (!mdb) {
 			spin_unlock_bh(&mc->lock);
 			return NULL;
 		}
-		mdb = mc_mdb_find(head, group);
-		if (!mdb) {
-			mdb = mc_mdb_create(mc, head, group);
-		}
-		spin_unlock_bh(&mc->lock);
-		if (!mdb)
-			return NULL;
 	}
 	MC_SKB_CB(skb)->mdb = mdb;
 
-	if ((fg = mc_update_fdb_group(mc, &mdb->pslist, fdb->addr.addr, now, port)))
+	if ((fg = mc_update_fdb_group(mc, &mdb->pslist, fdb->addr.addr, now, port))) {
+		spin_unlock_bh(&mc->lock);
 		return fg;
+	}
 
 	pg = mc_port_group_find(&mdb->pslist, port);
 	if (!pg) {
-		spin_lock_bh(&mc->lock);
-		if (!mc->started) {
+		pg = mc_port_group_create(mdb, port);
+		if (!pg) {
 			spin_unlock_bh(&mc->lock);
 			return NULL;
 		}
-		pg = mc_port_group_find(&mdb->pslist, port);
-		if (!pg) {
-			pg = mc_port_group_create(mdb, port);
-		}
-		spin_unlock_bh(&mc->lock);
-		if (!pg)
-			return NULL;
 	}
 
 	fg = mc_fdb_group_find(&pg->fslist, fdb->addr.addr);
 	if (!fg) {
-		spin_lock_bh(&mc->lock);
-		if (!mc->started) {
+		fg = mc_fdb_group_create(pg, fdb->addr.addr);
+		if (!fg) {
 			spin_unlock_bh(&mc->lock);
 			return NULL;
 		}
-		fg = mc_fdb_group_find(&pg->fslist, fdb->addr.addr);
-		if (!fg) {
-			fg = mc_fdb_group_create(pg, fdb->addr.addr);
-		}
-		spin_unlock_bh(&mc->lock);
-		if (!fg)
-			return NULL;
 	}
-
 	/* Update all ageing timers */
 	pg->ageing_timer = now;
 	fg->ageing_timer = now;
 	fg->fdb_age_out = 0;
-
+	spin_unlock_bh(&mc->lock);
 	return fg;
 }
 
@@ -972,22 +952,19 @@ static void mc_leave_group(struct mc_struct *mc,
 	struct mc_fdb_group *fg;
 	struct mc_mdb_entry *mdb;
 
+	spin_lock_bh(&mc->lock);
 	fg = mc_fdb_group_get(mc, group, skb, fdb, port);
-	if (fg) {
-		spin_lock_bh(&mc->lock);
-		fg = mc_fdb_group_get(mc, group, skb, fdb, port);
-		if (!fg) {
-			spin_unlock_bh(&mc->lock);
-			return;
-		}
-		mdb = fg->pg->mdb;
-		mc_fdb_group_destroy(fg);
-
-		if (!atomic_read(&mdb->users))
-			mc_mdb_destroy(mdb);
-
+	if (!fg) {
 		spin_unlock_bh(&mc->lock);
+		return;
 	}
+	mdb = fg->pg->mdb;
+	mc_fdb_group_destroy(fg);
+
+	if (!atomic_read(&mdb->users))
+		mc_mdb_destroy(mdb);
+
+	spin_unlock_bh(&mc->lock);
 }
 
 static void mc_ipv4_leave_group(struct mc_struct *mc,
