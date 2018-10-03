@@ -42,6 +42,7 @@
 #include "mc_forward.h"
 
 static struct mc_struct __rcu *_g_mcs = NULL;
+unsigned int leave_delay_msecond = 500;
 static spinlock_t g_mcs_lock;
 
 int mc_group_hash(__be32 mdb_salt, __be32 group)
@@ -951,6 +952,9 @@ static void mc_leave_group(struct mc_struct *mc,
 {
 	struct mc_fdb_group *fg;
 	struct mc_mdb_entry *mdb;
+	unsigned long  now = jiffies;
+	unsigned long expire_time = mc->membership_interval;
+	unsigned long expire_delay = msecs_to_jiffies(leave_delay_msecond );
 
 	spin_lock_bh(&mc->lock);
 	fg = mc_fdb_group_get(mc, group, skb, fdb, port);
@@ -958,12 +962,35 @@ static void mc_leave_group(struct mc_struct *mc,
 		spin_unlock_bh(&mc->lock);
 		return;
 	}
+
 	mdb = fg->pg->mdb;
-	mc_fdb_group_destroy(fg);
+	if (mdb->group.pro == htons(ETH_P_IP)) {
+		if (mc->rp.igmp_root_qe) {
+			expire_time = mc->rp.igmp_root_qe->max_resp_time
+				+ mc->rp.igmp_root_qe->qqic * mc->rp.igmp_root_qe->qrv;
+		}
+	} else {
+		if (mc->rp.mld_root_qe) {
+			expire_time = mc->rp.mld_root_qe->max_resp_time
+				+ mc->rp.mld_root_qe->qqic * mc->rp.mld_root_qe->qrv;
+		}
+	}
 
-	if (!atomic_read(&mdb->users))
-		mc_mdb_destroy(mdb);
-
+	/*
+	 * Support several clients share one mac address, not delete the
+	 * fdb at once, let's system sent out query to make sure that
+	 * there is no more clients.
+	 * Once new report received it will update the aging timer
+	 * again.
+	 */
+	fg->ageing_timer = now - expire_time + expire_delay;
+	if (timer_pending(&mc->atimer) ?
+		time_after(mc->atimer.expires, jiffies + expire_delay) :
+		try_to_del_timer_sync(&mc->atimer) >= 0) {
+		mod_timer(&mc->atimer, jiffies + expire_delay);
+		MC_PRINT("Reset Group Membership Interval ageing timer, expires = %u ms\n",
+			leave_delay_msecond);
+	}
 	spin_unlock_bh(&mc->lock);
 }
 
