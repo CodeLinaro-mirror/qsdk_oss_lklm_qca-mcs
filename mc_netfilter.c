@@ -280,12 +280,15 @@ static unsigned int mc_forward_hook(unsigned int hooknum, struct sk_buff *skb,
 		else
 			rhead = &mc->rp.mld_rlist;
 #endif
+		if (rhead == NULL)
+			goto accept;
+
 		if (!hlist_empty(rhead)) {
 			struct mc_querier_entry *qe;
 			struct hlist_node *h;
 
 			os_hlist_for_each_entry_rcu(qe, h, rhead, rlist) {
-				if (((struct net_bridge_port *)qe->port)->dev == out)
+				if (qe->dev == out)
 					goto accept;
 			}
 		}
