@@ -680,7 +680,7 @@ static struct mc_fdb_group *mc_update_mdb(struct mc_struct *mc,
 	}
 	spin_lock_bh(&mc->lock);
 	mdb = mc_mdb_find(head, group);
-	if (mdb == NULL) {
+	if (mdb != NULL) {
 		if ((fg = mc_update_fdb_group(mc, &mdb->pslist, fdb->addr.addr, now, port)))
 		    goto success;
 	} else {
@@ -721,8 +721,8 @@ static struct mc_fdb_group *mc_update_mdb(struct mc_struct *mc,
 	/* Update all ageing timers */
 	pg->ageing_timer = now;
 	fg->ageing_timer = now;
-	fg->fdb_age_out = 0;
 success:
+	fg->fdb_age_out = 0;
 	MC_SKB_CB(skb)->mdb = mdb;
 failure:
 	spin_unlock_bh(&mc->lock);
