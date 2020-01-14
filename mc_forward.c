@@ -33,13 +33,11 @@ static void mc_retag(void *iph, __be16 etype, __be32 dscp)
 {
 	__be32 _dscp = MC_DSCP(dscp);
 
-	if (etype == ETH_P_IP) {
+	if (etype == ETH_P_IP)
 		ipv4_copy_dscp(_dscp, iph);
-	}
 #ifdef MC_SUPPORT_MLD
-	else if (etype == ETH_P_IPV6) {
+	else if (etype == ETH_P_IPV6)
 		ipv6_copy_dscp(_dscp, iph);
-	}
 #endif
 }
 
@@ -49,16 +47,14 @@ static void mc_retag(void *iph, __be16 etype, __be32 dscp)
  */
 static int mc_stranslate_check_source(int pro, void *srcs, int offset, void *iph)
 {
-	if (offset > MC_DEF_IP6_SIZE) {
+	if (offset > MC_DEF_IP6_SIZE)
 		return -1;
-	}
-	if (pro == htons(ETH_P_IP)) {
+
+	if (pro == htons(ETH_P_IP))
 		return (*((__be32 *)srcs + offset) == ((struct iphdr *)iph)->saddr);
-	}
 #ifdef MC_SUPPORT_MLD
-	else {
+	else
 		return (!ipv6_addr_cmp((struct in6_addr *)srcs + offset, &((struct ipv6hdr *)iph)->saddr));
-	}
 #endif
 	return 0;
 }
@@ -139,15 +135,14 @@ static int mc_do_translate(struct mc_mdb_entry *mdb, void *iph, struct sk_buff *
 	}
 
 	if (mc->debug && printk_ratelimit()) {
-		if (mdb->group.pro == htons(ETH_P_IP)) {
+		if (mdb->group.pro == htons(ETH_P_IP))
 			MC_PRINT("Encap the Group %pI4 to following QCA devices:\n", &mdb->group);
-		} else {
+		else
 			MC_PRINT("Encap the Group %pI6 to following QCA devices:\n", &mdb->group);
-		}
+
 		read_lock(&mdb->rwlock);
-		for (i = 0; i < mdb->encap_dev_cnt; i++) {
+		for (i = 0; i < mdb->encap_dev_cnt; i++)
 			MC_PRINT("	-- %pM\n", mdb->encap_dev[i].mac);
-		}
 		read_unlock(&mdb->rwlock);
 	}
 
@@ -203,11 +198,11 @@ static void mc_flood_hook(__be32 ifindex, struct sk_buff *skb, int forward)
 		goto out;
 	}
 
-	if (forward) {
+	if (forward)
 		os_br_forward(br_port, skb);
-	} else {
+	else
 		br_deliver(br_port, skb);
-	}
+
 out:
 	dev_put(dev);
 }
@@ -234,17 +229,16 @@ static int mc_do_router_flood(struct mc_mdb_entry *mdb, struct hlist_head *rhead
 		 */
 		if (mdb) {
 			for (i = 0; i < mdb->flood_ifcnt; i++) {
-				if (mdb->flood_ifindex[i] == qe->ifindex) {
+				if (mdb->flood_ifindex[i] == qe->ifindex)
 					break;
-				}
 			}
-			if (i < mdb->flood_ifcnt) {
+
+			if (i < mdb->flood_ifcnt)
 				continue;
-			}
 		}
-		if ((skb2 = skb_clone(skb, GFP_ATOMIC)) == NULL) {
+		if ((skb2 = skb_clone(skb, GFP_ATOMIC)) == NULL)
 			return -ENOMEM;
-		}
+
 		br_port = os_br_port_get(qe->dev);
 		if (!br_port) {
 			kfree_skb(skb2);
@@ -268,11 +262,10 @@ static int mc_output(struct mc_mdb_entry *mdb, struct sk_buff *skb, int forward)
 	struct mc_struct *mc = mdb->mc;
 
 	if (unlikely(mc->debug) && printk_ratelimit()) {
-		if (mdb->group.pro == htons(ETH_P_IP)) {
+		if (mdb->group.pro == htons(ETH_P_IP))
 			MC_PRINT("Flood the Group %pI4 to following interfaces:\n", &mdb->group);
-		} else {
+		else
 			MC_PRINT("Flood the Group %pI6 to following interfaces:\n",&mdb->group);
-		}
 
 		read_lock(&mdb->rwlock);
 		for (i = 0; i < mdb->flood_ifcnt; i++) {
@@ -385,9 +378,8 @@ static int mc_convert(struct mc_struct *mc, struct sk_buff *skb, int forward)
 	}
 
 	if (forward) {
-		if (mc_device_is_router(mc)) {
+		if (mc_device_is_router(mc))
 			passup = 1;
-		}
 	}
 
 	head = &mc->hash[mc_group_hash(mc->salt, group.u.ip4)];
@@ -399,9 +391,8 @@ static int mc_convert(struct mc_struct *mc, struct sk_buff *skb, int forward)
 		/* The packets should be forwarded to the all ports attached to
 		 * a router
 		 */
-		if (forward && !hlist_empty(rhead)) {
+		if (forward && !hlist_empty(rhead))
 			mc_do_router_flood(NULL, rhead, skb);
-		}
 
 		if (passup) {
 			/*multicast router is enabled, passing up for routing*/
@@ -432,9 +423,8 @@ static int mc_convert(struct mc_struct *mc, struct sk_buff *skb, int forward)
 
 	/* The packets should be forwarded to the all ports attached to a router
 	 */
-	if (forward && !hlist_empty(rhead)) {
+	if (forward && !hlist_empty(rhead))
 		mc_do_router_flood(mdb, rhead, skb);
-	}
 
 	if (passup)
 		os_br_pass_frame_up(skb);
@@ -458,14 +448,13 @@ static int __mc_process(const struct net_bridge_port *src, struct sk_buff *skb)
 	int  ret;
 
 	mc = MC_DEV(BR_INPUT_SKB_CB(skb)->brdev);
-	if (!mc) {
+	if (!mc)
 		return -EINVAL;
-	}
+
 
 	if (!mc->started ||
-		is_broadcast_ether_addr(eth_hdr(skb)->h_dest)) {
+		is_broadcast_ether_addr(eth_hdr(skb)->h_dest))
 		return -EINVAL;
-	}
 
 	if (!src) {
 		ret = mc_convert(mc, skb, 0);
@@ -474,9 +463,8 @@ static int __mc_process(const struct net_bridge_port *src, struct sk_buff *skb)
 
 	br = src->br;
 	fdb = os_br_fdb_get(br, eth_hdr(skb)->h_source);
-	if (!fdb) {
+	if (!fdb)
 		return -EINVAL;
-	}
 
 	if (mc_rcv(mc, skb, fdb->addr.addr, src->dev)) {
 		kfree_skb(skb);
@@ -517,9 +505,8 @@ int mc_forward_init(void)
 		if (br_mc_handler != mc_process) {
 			printk("the hook has been occupied by others\n");
 			return -1;
-		} else {
+		} else
 			return 0;
-		}
 	}
 	rcu_assign_pointer(br_multicast_handle_hook, mc_process);
 
