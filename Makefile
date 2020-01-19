@@ -49,11 +49,6 @@ $(TARGET)-objs := \
 	mc_snooping.o \
 	mc_forward.o \
 	mc_ecm.o
-
-$(TARGET)-$(CONFIG_SUPPORT_OVS) += mc_ovs.o
-ccflags-$(CONFIG_SUPPORT_OVS) += -I$(STAGING_DIR)/usr/include/qca-ovsmgr \
-		-DMC_SUPPORT_OVS
-
 else
 
 # Makefile targets
