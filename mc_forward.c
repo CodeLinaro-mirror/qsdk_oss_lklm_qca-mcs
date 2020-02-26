@@ -105,7 +105,7 @@ static void mc_translate_hook(struct net_bridge *br,
 	pdst = mc_bridge_get_dst(os_br_port_get(skb->dev), &skb);
 
 	if (pdst) {
-		if (!skb || pdst == (struct net_bridge_port *)-1)
+		if (pdst == (struct net_bridge_port *)-1)
 			goto out;
 
 		if (forward)
