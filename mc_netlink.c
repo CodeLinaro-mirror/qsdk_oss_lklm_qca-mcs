@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, 2015, 2018-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012, 2015, 2018-2020 The Linux Foundation. All rights reserved.
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
  * copyright notice and this permission notice appear in all copies.
@@ -774,9 +774,11 @@ static void __mc_netlink_receive(struct sk_buff *__skb)
 			break;
 		case MC_MSG_GET_MDB:
 			{
+				spin_lock_bh(&mc->lock);
 				if (mc_mdbtbl_fillbuf(mc, msgdata, msghdr->buf_len,
 							&msghdr->bytes_written, &msghdr->bytes_needed))
 					msghdr->status = MC_STATUS_BUFFER_OVERFLOW;
+				spin_unlock_bh(&mc->lock);
 			}
 			break;
 		case MC_MSG_SET_ROUTER:
