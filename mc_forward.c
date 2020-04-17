@@ -114,7 +114,7 @@ static void mc_translate_hook(struct net_bridge *br,
 			br_deliver(pdst, skb);
 	}
 out:
-	if (skb && !pdst)
+	if (!pdst || pdst == (struct net_bridge_port *)-1)
 		kfree_skb(skb);
 }
 
