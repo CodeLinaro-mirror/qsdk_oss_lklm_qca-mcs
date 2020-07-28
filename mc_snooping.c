@@ -657,9 +657,17 @@ static void mc_rtimer_reset(struct mc_struct *mc)
 /* mc_mdb_expired
  *	mdb expired
  */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+static void mc_mdb_expired(struct timer_list *tl)
+#else
 static void mc_mdb_expired(unsigned long data)
+#endif
 {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+	struct mc_mdb_entry *mdb = from_timer(mdb, tl, etimer);
+#else
 	struct mc_mdb_entry *mdb = (struct mc_mdb_entry *)data;
+#endif
 	struct mc_struct *mc = mdb->mc;
 	struct mc_port_group *pg;
 	struct hlist_node *pgh;
@@ -693,7 +701,11 @@ static struct mc_mdb_entry *mc_mdb_create(struct mc_struct *mc,
 		mdb->group = *group;
 		mdb->mc = mc;
 		mdb->ageing_query = jiffies;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+		timer_setup(&mdb->etimer, mc_mdb_expired, 0);
+#else
 		setup_timer(&mdb->etimer, mc_mdb_expired, (unsigned long)mdb);
+#endif
 		hlist_add_head_rcu(&mdb->hlist, head);
 	} else {
 		MC_PRINT("%s: No memory\n", __func__);
@@ -2869,10 +2881,18 @@ static void mc_dev_rcu_free(struct rcu_head *head)
 	kfree(mc);
 }
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+static void mc_router_cleanup(struct timer_list *tl)
+#else
 static void mc_router_cleanup(unsigned long data)
+#endif
 {
 	int delay_reset = 0;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+	struct mc_struct *mc = from_timer(mc, tl, rtimer);
+#else
 	struct mc_struct *mc = (struct mc_struct *)data;
+#endif
 	unsigned long next_timer = jiffies + mc->querier_interval;
 	struct hlist_node *h;
 	struct mc_querier_entry *qe;
@@ -2916,10 +2936,18 @@ static void mc_router_cleanup(unsigned long data)
 	spin_unlock_bh(&mc->lock);
 }
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+static void mc_mdb_query(struct timer_list *tl)
+#else
 static void mc_mdb_query(unsigned long data)
+#endif
 {
 	int i;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+	struct mc_struct *mc = from_timer(mc, tl, qtimer);
+#else
 	struct mc_struct *mc = (struct mc_struct *)data;
+#endif
 	unsigned long next_timer = jiffies + mc->local_query_interval;
 
 	if (mc->timeout_gmi_enable)
@@ -2963,10 +2991,18 @@ out:
 /* mc_mdb_cleanup
  *	clean up a mdb
  */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+static void mc_mdb_cleanup(struct timer_list *tl)
+#else
 static void mc_mdb_cleanup(unsigned long data)
+#endif
 {
 	int i;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+	struct mc_struct *mc = from_timer(mc, tl, agingtimer);
+#else
 	struct mc_struct *mc = (struct mc_struct *)data;
+#endif
 	struct mc_querier_entry *igmp_root_qe = mc->rp.igmp_root_qe;
 	unsigned long next_timer, now = jiffies;
 	unsigned long igmp_expire_time = mc->membership_interval;
@@ -3142,12 +3178,19 @@ static void mc_acl_table_init(struct mc_struct *mc)
 /* mc_event_delay
  *	send a event out
  */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+static void mc_event_delay(struct timer_list *tl)
+#else
 static void mc_event_delay(unsigned long data)
+#endif
 {
-	mc_netlink_event_send((struct mc_struct *)data,
-			MC_EVENT_MDB_UPDATED,
-			0,
-			NULL);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+	struct mc_struct *mc = from_timer(mc, tl, evtimer);
+
+	mc_netlink_event_send(mc, MC_EVENT_MDB_UPDATED,	0, NULL);
+#else
+	mc_netlink_event_send((struct mc_struct *)data, MC_EVENT_MDB_UPDATED,	0, NULL);
+#endif
 }
 
 /* mc_attach
@@ -3201,15 +3244,17 @@ int mc_attach(struct net_device *dev)
 
 
 	mc_acl_table_init(mc);
-	setup_timer(&mc->qtimer, mc_mdb_query,
-			(unsigned long)mc);
-	setup_timer(&mc->agingtimer, mc_mdb_cleanup,
-			(unsigned long)mc);
-	setup_timer(&mc->rtimer, mc_router_cleanup,
-			(unsigned long)mc);
-	setup_timer(&mc->evtimer, mc_event_delay,
-			(unsigned long)mc);
-
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+	timer_setup(&mc->qtimer, mc_mdb_query, 0);
+	timer_setup(&mc->agingtimer, mc_mdb_cleanup, 0);
+	timer_setup(&mc->rtimer, mc_router_cleanup, 0);
+	timer_setup(&mc->evtimer, mc_event_delay, 0);
+#else
+	setup_timer(&mc->qtimer, mc_mdb_query, (unsigned long) mc);
+	setup_timer(&mc->agingtimer, mc_mdb_cleanup, (unsigned long) mc);
+	setup_timer(&mc->rtimer, mc_router_cleanup, (unsigned long) mc);
+	setup_timer(&mc->evtimer, mc_event_delay, (unsigned long) mc);
+#endif
 	/*Make the mc ready before publishing it*/
 	if (mc_open(mc) < 0) {
 		kfree(mc);

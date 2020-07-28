@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, 2015-2017, 2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012, 2015-2017, 2019-2020 The Linux Foundation. All rights reserved.
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
  * copyright notice and this permission notice appear in all copies.
@@ -335,8 +335,14 @@ static struct nf_hook_ops mc_hook_ops[] __read_mostly = {
 int __init mc_netfilter_init(void)
 {
 	int ret = 0;
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+	ret = nf_register_net_hook(&init_net,&mc_hook_ops[0]);
+	ret |= nf_register_net_hook(&init_net,&mc_hook_ops[1]);
+#else
 	ret = nf_register_hook(&mc_hook_ops[0]);
 	ret |= nf_register_hook(&mc_hook_ops[1]);
+#endif
 	return ret;
 }
 
@@ -345,7 +351,12 @@ int __init mc_netfilter_init(void)
  */
 void mc_netfilter_exit(void)
 {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+	nf_unregister_net_hook(&init_net,&mc_hook_ops[0]);
+	nf_unregister_net_hook(&init_net,&mc_hook_ops[1]);
+#else
 	nf_unregister_hook(&mc_hook_ops[0]);
 	nf_unregister_hook(&mc_hook_ops[1]);
+#endif
 }
 

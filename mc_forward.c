@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, 2015, 2017-2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012, 2015, 2017-2020 The Linux Foundation. All rights reserved.
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
  * copyright notice and this permission notice appear in all copies.
@@ -111,7 +111,11 @@ static void mc_translate_hook(struct net_bridge *br,
 		if (forward)
 			os_br_forward(pdst, skb);
 		else
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+			br_forward(pdst, skb, false, true);
+#else
 			br_deliver(pdst, skb);
+#endif
 	}
 out:
 	if (!pdst || pdst == (struct net_bridge_port *)-1)
@@ -201,8 +205,11 @@ static void mc_flood_hook(__be32 ifindex, struct sk_buff *skb, int forward)
 	if (forward)
 		os_br_forward(br_port, skb);
 	else
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+		br_forward(br_port, skb, false, true);
+#else
 		br_deliver(br_port, skb);
-
+#endif
 out:
 	dev_put(dev);
 }
@@ -466,7 +473,11 @@ static int __mc_process(const struct net_bridge_port *src, struct sk_buff *skb)
 	if (!fdb)
 		return -EINVAL;
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0))
+	if (mc_rcv(mc, skb, fdb->key.addr.addr, src->dev)) {
+#else
 	if (mc_rcv(mc, skb, fdb->addr.addr, src->dev)) {
+#endif
 		kfree_skb(skb);
 		return 0;
 	}
