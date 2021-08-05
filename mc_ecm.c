@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2015, 2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2014-2015, 2019, 2021 The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -31,7 +31,7 @@ static int mc_bridge_if_source_filter(struct mc_mdb_entry *mdb, uint32_t ifindex
 {
 	struct mc_port_group *pg;
 	struct hlist_node *pgh;
-	int i = 0;
+
 
 	/*no bridge port joining*/
 	if (hlist_empty(&mdb->pslist))
@@ -40,6 +40,7 @@ static int mc_bridge_if_source_filter(struct mc_mdb_entry *mdb, uint32_t ifindex
 	os_hlist_for_each_entry_rcu(pg, pgh, &mdb->pslist, pslist) {
 		struct mc_fdb_group *fg;
 		struct hlist_node *fgh;
+		int i;
 
 		if (ifindex != ((struct net_device *)pg->port)->ifindex)
 			continue;
@@ -60,7 +61,7 @@ static int mc_bridge_if_source_filter(struct mc_mdb_entry *mdb, uint32_t ifindex
 				u_int32_t ip4 = mc_source->u.ip4;
 				u_int32_t *srcs = (u_int32_t *) fg->a.srcs;
 
-				for (; i < fg->a.nsrcs; i++) {
+				for (i = 0; i < fg->a.nsrcs; i++) {
 					if (srcs[i] == ip4)
 						break;
 				}
@@ -70,7 +71,7 @@ static int mc_bridge_if_source_filter(struct mc_mdb_entry *mdb, uint32_t ifindex
 				struct in6_addr *ip6 = &mc_source->u.ip6;
 				struct in6_addr *srcs = (struct in6_addr *)fg->a.srcs;
 
-				for (; i < fg->a.nsrcs; i++) {
+				for (i = 0; i < fg->a.nsrcs; i++) {
 					if (!ipv6_addr_cmp(&srcs[i], ip6))
 						break;
 				}
