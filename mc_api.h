@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2012, 2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -156,7 +157,7 @@ struct __mc_param_timeout {
 #define MC_DEF_DEV_MAX		 16
 #define MC_DEF_IF_MAX		 16
 #define MC_DEF_IF_NODE_MAX	 8
-#define MC_DEF_GROUP_MAX	 16
+#define MC_DEF_GROUP_MAX	 256
 #define MC_DEF_IP6_SIZE		 16
 #define MC_DEF_FILTER_INCLUDE  1
 #define MC_DEF_FILTER_EXCLUDE  2
