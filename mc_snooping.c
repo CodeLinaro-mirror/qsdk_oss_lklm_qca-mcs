@@ -304,7 +304,6 @@ static void mc_send_query(struct mc_struct *mc, void *port,
 	if (!skb)
 		return;
 
-	__skb_push(skb, sizeof(struct ethhdr));
 	if (port)
 		skb->dev = port;
 	else
@@ -318,6 +317,7 @@ static void mc_send_query(struct mc_struct *mc, void *port,
 			skb, NULL, skb->dev,
 			br_dev_queue_push_xmit);
 #else
+	__skb_push(skb, sizeof(struct ethhdr));
 	NF_HOOK(PF_BRIDGE, NF_BR_LOCAL_OUT, skb, NULL, skb->dev,
 			dev_queue_xmit);
 #endif
