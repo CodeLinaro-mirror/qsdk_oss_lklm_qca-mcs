@@ -1,5 +1,7 @@
 /*
  * Copyright (c) 2012, 2015-2021 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
  * copyright notice and this permission notice appear in all copies.
@@ -2296,6 +2298,13 @@ static int mc_ipv4_rcv(struct mc_struct *mc, struct sk_buff *skb,
 	case CHECKSUM_COMPLETE:
 		if (!csum_fold(skb2->csum))
 			break;
+
+		/*
+		 * If the pseudo header is changed, we could not do the quick checksum
+		 * verification. So we are failing through with ip_summed being CHECKSUM_NONE.
+		 * This will end up verify the checksum again based on the whole packet.
+		 */
+		skb2->ip_summed = CHECKSUM_NONE;
 		/* fall through */
 	case CHECKSUM_NONE:
 		skb2->csum = 0;
@@ -2447,17 +2456,23 @@ static int mc_ipv6_rcv(struct mc_struct *mc, struct sk_buff *skb,
 		if (!csum_ipv6_magic(saddr, daddr, skb2->len, IPPROTO_ICMPV6,
 					skb2->csum))
 			break;
+
+		/*
+		 * If the pseudo header is changed, we could not do the quick checksum
+		 * verification. So we are failing through with ip_summed being CHECKSUM_NONE.
+		 * This will end up verify the checksum again based on the whole packet.
+		 */
+		skb2->ip_summed = CHECKSUM_NONE;
 		/* fall through */
 	case CHECKSUM_NONE:
-		skb2->csum = ~csum_unfold(csum_ipv6_magic(saddr, daddr, skb2->len,
-					IPPROTO_ICMPV6, 0));
-
+		skb2->csum = ~csum_unfold(csum_ipv6_magic(saddr, daddr, skb2->len, IPPROTO_ICMPV6, 0));
 		if (__skb_checksum_complete(skb2)) {
 			MC_PRINT(KERN_DEBUG "ICMPv6 checksum failed [%pI6 > %pI6]\n",
 					saddr, daddr);
 			goto out;
 		}
 	}
+
 	MC_SKB_CB(skb)->igmp = 1;
 	MC_SKB_CB(skb)->mdb = NULL;
 
