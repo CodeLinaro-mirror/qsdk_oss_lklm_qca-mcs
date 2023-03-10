@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012, 2015-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -994,17 +994,18 @@ static int mc_ipv6_mix_source(struct in6_addr *a, __be32 a_cnt, struct in6_addr 
 {
 	int m, n = 0;
 
-	while (a_cnt && n < b_cnt) {
+	while (a_cnt && n < a_cnt) {
 		m = 0;
-		while (m < a_cnt) {
-			if (!ipv6_addr_cmp(&a[m], &b[n]))
+		while (m < b_cnt) {
+			if (!ipv6_addr_cmp(&a[n], &b[m]))
 				break;
 			m++;
 		}
-		if (m == a_cnt) {
-			if (m < a_cnt - 1)
-				memcpy(&a[m], &a[m + 1], sizeof(*a) * (a_cnt - 1 - m));
+		if (m == b_cnt) {
+			if (n < (a_cnt - 1))
+				memcpy(&a[n], &a[n + 1], sizeof(*a) * (a_cnt - n - 1));
 			a_cnt--;
+			continue;
 		}
 		n++;
 	}
@@ -1092,17 +1093,19 @@ static int mc_ipv4_mix_source(__be32 *a, __be32 a_cnt, __be32 *b, __be32 b_cnt)
 {
 	int m, n = 0;
 
-	while (a_cnt && n < b_cnt) {
+	while (a_cnt && n < a_cnt) {
 		m = 0;
-		while (m < a_cnt) {
-			if (a[m] == b[n])
+		while (m < b_cnt) {
+			if (a[n] == b[m])
 				break;
 			m++;
 		}
-		if (m == a_cnt) {
-			if (m < a_cnt - 1)
-				memcpy(&a[m], &a[m + 1], sizeof(__be32) * (a_cnt - 1 - m));
+
+		if (m == b_cnt) {
+			if (n < (a_cnt - 1))
+				memcpy(&a[n], &a[n + 1], sizeof(__be32) * (a_cnt - n - 1));
 			a_cnt--;
+			continue;
 		}
 		n++;
 	}
