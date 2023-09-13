@@ -2308,7 +2308,7 @@ static int mc_ipv4_rcv(struct mc_struct *mc, struct sk_buff *skb,
 		 * This will end up verify the checksum again based on the whole packet.
 		 */
 		skb2->ip_summed = CHECKSUM_NONE;
-		/* fall through */
+		fallthrough;
 	case CHECKSUM_NONE:
 		skb2->csum = 0;
 		if (skb_checksum_complete(skb2))
@@ -2466,7 +2466,7 @@ static int mc_ipv6_rcv(struct mc_struct *mc, struct sk_buff *skb,
 		 * This will end up verify the checksum again based on the whole packet.
 		 */
 		skb2->ip_summed = CHECKSUM_NONE;
-		/* fall through */
+		fallthrough;
 	case CHECKSUM_NONE:
 		skb2->csum = ~csum_unfold(csum_ipv6_magic(saddr, daddr, skb2->len, IPPROTO_ICMPV6, 0));
 		if (__skb_checksum_complete(skb2)) {
@@ -3453,13 +3453,22 @@ static int mc_proc_snooper_open(struct inode *inode, struct file *file)
         return single_open(file, mc_proc_snooper_show, NULL);
 }
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0))
+static const struct proc_ops mc_proc_snooper_proc_ops = {
+        .proc_open           = mc_proc_snooper_open,
+        .proc_read           = seq_read,
+        .proc_lseek         = seq_lseek,
+        .proc_release        = single_release,
+};
+#else
 static const struct file_operations mc_proc_snooper_fops = {
-        .owner          = THIS_MODULE,
+	.owner		= THIS_MODULE,
         .open           = mc_proc_snooper_open,
         .read           = seq_read,
         .llseek         = seq_lseek,
         .release        = single_release,
 };
+#endif
 
 /* mc_proc_create_snooper_entry
  *	create proc entry for information show
@@ -3468,7 +3477,11 @@ int mc_proc_create_snooper_entry(void) {
 
 	mc_proc_root = proc_mkdir(MCS_PROC_ROOT_NAME, init_net.proc_net);
 	if (mc_proc_root) {
-		mc_proc_inst_entry = proc_create(MCS_PROC_INST_NAME, 0444, mc_proc_root, &mc_proc_snooper_fops );
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 0, 0))
+		mc_proc_inst_entry = proc_create(MCS_PROC_INST_NAME, 0444, mc_proc_root, &mc_proc_snooper_proc_ops);
+#else
+		mc_proc_inst_entry = proc_create(MCS_PROC_INST_NAME, 0444, mc_proc_root, &mc_proc_snooper_fops);
+#endif
 		if(!mc_proc_inst_entry) {
 			printk(KERN_INFO "Error creating stat proc entry");
 			return -ENOMEM;
