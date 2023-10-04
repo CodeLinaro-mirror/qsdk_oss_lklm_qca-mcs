@@ -212,6 +212,7 @@ struct __mc_iftbl_node {
 	u_int8_t filter_mode;
 	u_int8_t nsrcs;
 	u_int8_t srcs[MC_DEF_SRCS_MAX * MC_DEF_IP6_SIZE];
+	char if_name[IFNAMSIZ];
 };
 struct __mc_iftbl_entry {
 	struct __mc_group group;
