@@ -2807,7 +2807,7 @@ static int mc_dev_unregister(struct mc_struct *mc)
  */
 static int mc_open(struct mc_struct *mc)
 {
-	struct net_bridge *br;
+	unsigned long expired;
 
 	if (!mc->enable) {
 		MC_PRINT(KERN_DEBUG "%s: mc open failed, feature is disabled\n", __func__);
@@ -2829,15 +2829,25 @@ static int mc_open(struct mc_struct *mc)
 		return -EINVAL;
 	}
 	spin_unlock_bh(&g_mcs_lock);
-	br = netdev_priv(mc->dev);
+
+	/*
+	 * Ovs bridge don't have forward_delay, use forward_delay default
+	 * value 15HZ instead
+	 */
+	if (netif_is_bridge_master(mc->dev)) {
+		struct net_bridge *br = netdev_priv(mc->dev);
+		expired = br->forward_delay;
+	} else {
+		expired = 15 * HZ;
+	}
 	mc->ageing_query = jiffies;
 	mc->startup_queries_sent = 0;
 	mc->started = 1;
 
 	/* Start aging timer and query timer now */
-	mod_timer(&mc->qtimer, jiffies + br->forward_delay);
-	mod_timer(&mc->agingtimer, jiffies + br->forward_delay);
-	mod_timer(&mc->rtimer, jiffies + br->forward_delay);
+	mod_timer(&mc->qtimer, jiffies + expired);
+	mod_timer(&mc->agingtimer, jiffies + expired);
+	mod_timer(&mc->rtimer, jiffies + expired);
 
 	return 0;
 }
