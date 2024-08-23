@@ -3442,6 +3442,7 @@ static int mc_device_event(struct notifier_block *this, unsigned long event, voi
 		rcu_read_unlock();
 		break;
 
+	case NETDEV_DOWN:
 	case NETDEV_BR_LEAVE:
 		if (!netif_is_bridge_port(dev)) {
 			break;
