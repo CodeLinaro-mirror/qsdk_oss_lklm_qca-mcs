@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2014-2015 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -27,11 +28,12 @@
  * group	  – multicast destination address
  * max_dst	  - the size of the ‘dst_dev’ array being passed in
  * dst_dev	  - the array of ‘ifindex’ for the destination interfaces, to be filled in by the callee
+ * mac		  - host mac address if mcuc on, otherwise is the multicast mac address.
  * Return	  - number of valid interfaces being returned in dst_dev
  *				or negative on errors
  */
 int mc_bridge_ipv4_get_if(struct net_device *brdev, __be32 origin, __be32 group,
-			  uint32_t max_dst, uint32_t dst_dev[]);
+			  uint32_t max_dst, uint32_t dst_dev[], uint8_t *mac);
 
 /*
  * Bridge snoop table update callback for IPv4
@@ -64,11 +66,12 @@ mc_bridge_ipv4_update_callback_t mc_bridge_ipv4_update_callback_get(void);
  * group	  – multicast destination address
  * max_dst	  - the size of the ‘dst_dev’ array being passed in
  * dst_dev	  - the array of ‘ifindex’ for the destination interfaces, to be filled in by the callee
+ * mac		  - host mac address if mcuc on, otherwise is the multicast mac address.
  * Return	  - number of valid interfaces being returned in dst_dev
  *				or ngeative on errors
  */
 int mc_bridge_ipv6_get_if(struct net_device *brdev, struct in6_addr *origin, struct in6_addr *group,
-			  uint32_t max_dst, uint32_t dst_dev[]);
+			  uint32_t max_dst, uint32_t dst_dev[], uint8_t *mac);
 
 /*
  * Bridge snoop table update callback for IPv4

@@ -1,5 +1,7 @@
 /*
  * Copyright (c) 2012, 2015, 2017-2020 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
  * copyright notice and this permission notice appear in all copies.
@@ -63,7 +65,7 @@ static int mc_stranslate_check_source(int pro, void *srcs, int offset, void *iph
  * mc_translate_filter_source
  *	translation filtered by the source
  */
-static int mc_translate_filter_source(struct __mc_encaptbl_dev *dev, void *ip, __be16 pro)
+int mc_translate_filter_source(struct __mc_encaptbl_dev *dev, void *ip, __be16 pro)
 {
 	int n = 0;
 

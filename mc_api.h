@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012, 2015 The Linux Foundation. All rights reserved.
- * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -180,6 +180,7 @@ struct __mc_rtport_entry {
 struct __mc_mdb_entry {
 	struct __mc_group group;
 	u_int32_t ifindex;
+	u_int32_t num_host;
 	u_int32_t nsrcs;
 	u_int8_t srcs[MC_DEF_SRCS_MAX * MC_DEF_IP6_SIZE];
 	u_int32_t aging;
@@ -190,6 +191,7 @@ struct __mc_mdb_entry {
 
 struct __mc_encaptbl_dev {
 	u_int8_t mac[6];
+	u_int32_t ifindex;
 	u_int32_t in_nsrcs;
 	u_int8_t in_srcs[MC_DEF_SRCS_MAX * MC_DEF_IP6_SIZE];	/* include sources list */
 	u_int32_t ex_nsrcs;
@@ -223,4 +225,6 @@ struct __mc_iftbl_entry {
 
 int mc_init_cb(void);
 int mc_deinit_cb(void);
+
+int mc_translate_filter_source(struct __mc_encaptbl_dev *dev, void *ip, __be16 pro);
 #endif

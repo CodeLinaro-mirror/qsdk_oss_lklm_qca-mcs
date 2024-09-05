@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2014-2015, 2019, 2021 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -93,7 +94,7 @@ static int mc_bridge_if_source_filter(struct mc_mdb_entry *mdb, uint32_t ifindex
  *	get the port list for a given group and source
  */
 static int __mc_bridge_get_ifs(struct net_device *brdev, struct mc_ip *mc_group,
-			       struct mc_ip *mc_source, uint32_t max_dst, uint32_t dst_dev[])
+			       struct mc_ip *mc_source, uint32_t max_dst, uint32_t dst_dev[], uint8_t *mac)
 {
 	struct mc_struct *mc;
 	struct hlist_head *head;
@@ -116,6 +117,19 @@ static int __mc_bridge_get_ifs(struct net_device *brdev, struct mc_ip *mc_group,
 	}
 
 	read_lock(&mdb->rwlock);
+
+	/*
+	 * If MCUC on, it means at most one host joined the group
+	 */
+	if (mdb->encap_dev_cnt) {
+		if (!mc_translate_filter_source(mdb->encap_dev,  &mc_source->u.ip4, mdb->group.pro)) {
+			dst_dev[0] = mdb->encap_dev[0].ifindex;
+			ether_addr_copy(mac, mdb->encap_dev[0].mac);
+			read_unlock(&mdb->rwlock);
+			MC_PRINT("Group %pI4 encap dest mac addr:%pM",&mc_group->u.ip4, mac);
+			return 1;
+		}
+	}
 	for (i = 0, ifnum = 0; i < mdb->flood_ifcnt; i++) {
 		if (mc_bridge_if_source_filter(mdb, mdb->flood_ifindex[i], mc_source)) {
 
@@ -141,6 +155,7 @@ static int __mc_bridge_get_ifs(struct net_device *brdev, struct mc_ip *mc_group,
 
 	}
 	read_unlock(&mdb->rwlock);
+	MC_PRINT("Group %pI4 dest mac addr:%pM\n",&mc_group->u.ip4, mac);
 
 	return ifnum;
 
@@ -150,7 +165,7 @@ static int __mc_bridge_get_ifs(struct net_device *brdev, struct mc_ip *mc_group,
  *	get the port list for a group
  */
 int mc_bridge_ipv4_get_if(struct net_device *brdev, __be32 origin, __be32 group,
-			 uint32_t max_dst, uint32_t dst_dev[])
+			 uint32_t max_dst, uint32_t dst_dev[], uint8_t *mac)
 {
 	struct mc_ip mc_group;
 	struct mc_ip mc_source;
@@ -164,8 +179,20 @@ int mc_bridge_ipv4_get_if(struct net_device *brdev, __be32 origin, __be32 group,
 	mc_source.u.ip4 = origin;
 	mc_source.pro = htons(ETH_P_IP);
 
+	/*
+	 * IPv4 multicast addr format
+	 * 01:00:5e:00:00:00/ff:ff:ff:00:00:00
+	 * and with last 3 byte of group address
+	 */
+	mac[0] = 0x01;
+        mac[1] = 0x00;
+        mac[2] = 0x5e;
+        mac[3] = (ntohl(group) & 0x7f0000) >> 16;
+        mac[4] = (ntohl(group) & 0xff00) >> 8;
+        mac[5] = (ntohl(group) & 0xff);
+
 	rcu_read_lock();
-	ret = __mc_bridge_get_ifs(brdev, &mc_group, &mc_source, max_dst, dst_dev);
+	ret = __mc_bridge_get_ifs(brdev, &mc_group, &mc_source, max_dst, dst_dev, mac);
 	rcu_read_unlock();
 
 	return ret;
@@ -217,7 +244,7 @@ static mc_bridge_ipv6_update_callback_t __rcu mc_ipv6_event_cb = NULL;
  *	get the port list for a given ipv6 group
  */
 int mc_bridge_ipv6_get_if(struct net_device *brdev, struct in6_addr *origin, struct in6_addr *group,
-						  uint32_t max_dst, uint32_t dst_dev[])
+						  uint32_t max_dst, uint32_t dst_dev[], uint8_t *mac)
 {
 	struct mc_ip mc_group;
 	struct mc_ip mc_source;
@@ -231,8 +258,20 @@ int mc_bridge_ipv6_get_if(struct net_device *brdev, struct in6_addr *origin, str
 	mc_ipv6_addr_copy(&mc_source.u.ip6, origin);
 	mc_source.pro = htons(ETH_P_IPV6);
 
+	/*
+	 * IPv6 multicast mac address format:
+	 * - 33:33:00:00:00:00/ff:ff:00:00:00:00
+	 * with the last 4 bytes of group address.
+	 */
+	mac[0] = 0x33;
+	mac[1] = 0x33;
+        mac[2] = group->s6_addr[12];
+        mac[3] = group->s6_addr[13];
+        mac[4] = group->s6_addr[14];
+        mac[5] = group->s6_addr[15];
+
 	rcu_read_lock();
-	ret = __mc_bridge_get_ifs(brdev, &mc_group, &mc_source, max_dst, dst_dev);
+	ret = __mc_bridge_get_ifs(brdev, &mc_group, &mc_source, max_dst, dst_dev, mac);
 	rcu_read_unlock();
 
 	return ret;
@@ -297,6 +336,7 @@ void _test_mc_get_ifs(void)
 	struct in6_addr group6;
 	uint32_t max_dst = 16;
 	uint32_t dst_dev[16];
+	uint8_t dest_mac_addr[6];
 
 	int ifnum;
 	int i;
@@ -311,7 +351,7 @@ void _test_mc_get_ifs(void)
 	origin = 0;
 	group = htonl(0xef010203);
 
-	ifnum = mc_bridge_ipv4_get_if(brdev, origin, group, max_dst, dst_dev);
+	ifnum = mc_bridge_ipv4_get_if(brdev, origin, group, max_dst, dst_dev, dest_mac_addr);
 	if (ifnum < 0)
 		printk("Failed to get IPv4 mc interfaces\n");
 	else {
@@ -325,7 +365,7 @@ void _test_mc_get_ifs(void)
 	ipv6_addr_set(&origin6, 0, 0, 0, 0);
 	ipv6_addr_set(&group6, htonl(0xff150000), 0, 0, htonl(1));
 
-	ifnum = mc_bridge_ipv6_get_if(brdev, &origin6, &group6, max_dst, dst_dev);
+	ifnum = mc_bridge_ipv6_get_if(brdev, &origin6, &group6, max_dst, dst_dev, dest_mac_addr);
 	if (ifnum < 0)
 		printk("Failed to get IPv4 mc interfaces\n");
 	else {
