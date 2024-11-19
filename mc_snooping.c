@@ -3085,11 +3085,6 @@ static void mc_mdb_cleanup(unsigned long data)
 #endif
 
 	spin_lock_bh(&mc->lock);
-	if (!mc->timeout_gmi_enable) {
-		next_timer = now + mc->membership_interval;
-		goto out;
-	}
-
 	if (igmp_root_qe)
 		igmp_expire_time = igmp_root_qe->max_resp_time + igmp_root_qe->qqic * igmp_root_qe->qrv;
 
@@ -3145,7 +3140,6 @@ static void mc_mdb_cleanup(unsigned long data)
 		}
 	}
 
-out:
 	if( mc->started )
 		mod_timer(&mc->agingtimer, round_jiffies(next_timer + HZ/4));
 	spin_unlock_bh(&mc->lock);
