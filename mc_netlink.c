@@ -324,8 +324,9 @@ static int mc_mdbtbl_fillbuf(struct mc_struct *mc, void *buf,
 		os_hlist_for_each_entry_rcu(mdb, mdbh, &mc->hash[i], hlist) {
 			struct mc_port_group *pg;
 			struct hlist_node *pgh;
+			int num_host = atomic_read(&mdb->users);
 
-			if (!atomic_read(&mdb->users) || hlist_empty(&mdb->pslist))
+			if (!num_host || hlist_empty(&mdb->pslist))
 				continue;
 
 			os_hlist_for_each_entry_rcu(pg, pgh, &mdb->pslist, pslist) {
@@ -357,6 +358,7 @@ static int mc_mdbtbl_fillbuf(struct mc_struct *mc, void *buf,
 					}
 #endif
 					entry->ifindex = ((struct net_device *)pg->port)->ifindex;
+					entry->num_host = num_host;
 					entry->filter_mode = fg->filter_mode;
 					entry->aging = jiffies_to_msecs(now - fg->ageing_timer) / 1000;
 					entry->fdb_age_out = fg->fdb_age_out;
