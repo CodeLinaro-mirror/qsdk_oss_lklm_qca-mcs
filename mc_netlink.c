@@ -493,10 +493,11 @@ static void mc_group_notify(struct mc_struct *mc, struct mc_glist_entry **ghead)
 /*
  * mc_set_psw_encap - set path selected way encapsulation
  */
-static void mc_set_psw_encap(struct mc_struct *mc, void *param, __be32 param_len)
+static void mc_set_psw_encap(struct mc_struct *mc, void *param, __be32 param_len, struct mc_glist_entry **ghead)
 {
 	int i, entry_cnt = param_len / sizeof(struct __mc_encaptbl_entry);
 	struct __mc_encaptbl_entry *entry = param;
+	int    encap_dev_cnt;
 
 	MC_PRINT("%s: %s encap table\n", __func__, entry_cnt ? "Update" : "Clear");
 	for (i = 0; i < MC_HASH_SIZE; i++) {
@@ -504,16 +505,31 @@ static void mc_set_psw_encap(struct mc_struct *mc, void *param, __be32 param_len
 		struct hlist_node *mdbh;
 
 		os_hlist_for_each_entry_rcu(mdb, mdbh, &mc->hash[i], hlist) {
+			int entry_changed = 0;
 			write_lock_bh(&mdb->rwlock);
 			if (entry_cnt && ((entry = mc_find_entry_by_mdb(mc, mdb,
 								sizeof(struct __mc_encaptbl_entry), param, param_len)) != NULL)) {
+				encap_dev_cnt = mdb->encap_dev_cnt;
 				mdb->encap_dev_cnt = entry->dev_cnt > MC_ENCAP_DEV_MAX ? MC_ENCAP_DEV_MAX : entry->dev_cnt;
-				memcpy(mdb->encap_dev, entry->dev,	entry->dev_cnt * sizeof(struct __mc_encaptbl_dev));
+				if (encap_dev_cnt != mdb->encap_dev_cnt ||
+					memcmp(mdb->encap_dev, entry->dev,
+						mdb->encap_dev_cnt * sizeof(struct __mc_encaptbl_dev))) {
+					entry_changed = 1;
+
+					memcpy(mdb->encap_dev, entry->dev,
+							mdb->encap_dev_cnt * sizeof(struct __mc_encaptbl_dev));
+				}
 			} else {
-				mdb->encap_dev_cnt = 0;
-				memset(mdb->encap_dev, 0,  sizeof(mdb->encap_dev));
+				if (mdb->encap_dev_cnt) {
+					mdb->encap_dev_cnt = 0;
+					entry_changed = 1;
+					memset(mdb->encap_dev, 0,  sizeof(mdb->encap_dev));
+				}
 			}
 			write_unlock_bh(&mdb->rwlock);
+			if (entry_changed) {
+				mc_group_list_add(&mdb->group, ghead);
+			}
 		}
 	}
 }
@@ -543,14 +559,15 @@ static void mc_set_psw_flood(struct mc_struct *mc, void *param, __be32 param_len
 				flood_ifcnt = mdb->flood_ifcnt;
 				mdb->flood_ifcnt = entry->ifcnt > MC_FLOOD_IF_MAX ? MC_FLOOD_IF_MAX : entry->ifcnt;
 				if (flood_ifcnt != mdb->flood_ifcnt ||
-					memcmp(mdb->flood_ifindex, entry->ifindex, entry->ifcnt * sizeof(__be32)))
+					memcmp(mdb->flood_ifindex, entry->ifindex, mdb->flood_ifcnt * sizeof(__be32)))
 					entry_changed = 1;
-				memcpy(mdb->flood_ifindex, entry->ifindex, entry->ifcnt * sizeof(__be32));
+				memcpy(mdb->flood_ifindex, entry->ifindex, mdb->flood_ifcnt * sizeof(__be32));
 			} else {
-				if (mdb->flood_ifcnt != 0)
+				if (mdb->flood_ifcnt) {
 					entry_changed = 1;
-				mdb->flood_ifcnt = 0;
-				memset(mdb->flood_ifindex, 0, sizeof(mdb->flood_ifindex));
+					mdb->flood_ifcnt = 0;
+					memset(mdb->flood_ifindex, 0, sizeof(mdb->flood_ifindex));
+				}
 			}
 			write_unlock_bh(&mdb->rwlock);
 
@@ -757,7 +774,9 @@ static void __mc_netlink_receive(struct sk_buff *__skb)
 			break;
 		case MC_MSG_SET_PSW_ENCAP:
 			{
-				mc_set_psw_encap(mc, msgdata, msghdr->buf_len);
+				struct mc_glist_entry *ghead = NULL;
+				mc_set_psw_encap(mc, msgdata, msghdr->buf_len, &ghead);
+				mc_group_notify(mc, &ghead);
 			}
 			break;
 		case MC_MSG_SET_PSW_FLOOD:
