@@ -108,7 +108,6 @@ struct mld2_query {
 #define MC_GROUP_MAX		MC_DEF_GROUP_MAX
 #define MC_SRC_GROUP_MAX	MC_DEF_SRCS_MAX
 #define MC_RT_SRC_MAX		MC_DEF_RT_SRCS_MAX
-#define MC_ENCAP_DEV_MAX	MC_DEF_DEV_MAX
 #define MC_FLOOD_IF_MAX		MC_DEF_IF_MAX
 #define MC_EVENT_DELAY_MS	3	/* ms */
 #define MC_CHECK_TBIT(ip6)	(((ip6)->s6_addr[1] & 0x10) &&	((ip6)->s6_addr[12] & 0x80))

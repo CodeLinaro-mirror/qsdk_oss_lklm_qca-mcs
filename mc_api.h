@@ -160,6 +160,7 @@ struct __mc_param_timeout {
 #define MC_DEF_IF_NODE_MAX	 64
 #define MC_DEF_GROUP_MAX	 256
 #define MC_DEF_IP6_SIZE		 16
+#define MC_ENCAP_DEV_MAX	1
 #define MC_DEF_FILTER_INCLUDE  1
 #define MC_DEF_FILTER_EXCLUDE  2
 #define MC_DEF_EX_SRCS_INVAL 0xff
@@ -201,7 +202,7 @@ struct __mc_encaptbl_dev {
 struct __mc_encaptbl_entry {
 	struct __mc_group group;
 	u_int32_t dev_cnt;
-	struct __mc_encaptbl_dev dev[MC_DEF_DEV_MAX];
+	struct __mc_encaptbl_dev dev[MC_ENCAP_DEV_MAX];
 } __attribute__ ((packed));
 
 struct __mc_floodtbl_entry {
