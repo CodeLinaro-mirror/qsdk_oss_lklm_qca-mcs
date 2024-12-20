@@ -1,5 +1,7 @@
 /*
  * Copyright (c) 2012, 2015, 2017, 2019 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
  * copyright notice and this permission notice appear in all copies.
@@ -225,6 +227,7 @@ struct mc_struct {
 	unsigned long ageing_query;
 
 	unsigned char multicast_router;
+	struct mc_glist_entry *notifyhead; /* store the groups to send out notification */
 };
 
 struct mc_rt_src_list {

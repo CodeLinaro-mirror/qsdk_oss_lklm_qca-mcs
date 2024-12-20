@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012, 2015 The Linux Foundation. All rights reserved.
- * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -49,6 +49,7 @@ enum {
 	MC_MSG_SET_ROUTER,
 	MC_MSG_GET_ROUTER_PORT,
 	MC_MSG_DEL_MDB,
+	MC_MSG_SET_NOTIFY,
 	MC_MSG_MAX
 };
 

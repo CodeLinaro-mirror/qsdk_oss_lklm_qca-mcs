@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2013, 2015, 2020 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2025, Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -63,7 +64,7 @@ static inline struct net_bridge_port *os_br_port_get(const struct net_device *de
 {
 	struct net_bridge_port *br_port;
 
-	if (!dev)
+	if (!dev || !netif_is_bridge_port(dev))
 		return NULL;
 
 	br_port = br_port_get_rcu(dev);
@@ -100,7 +101,7 @@ static inline struct net_bridge_port *os_br_port_get(const struct net_device *de
 {
 	struct net_bridge_port *br_port;
 
-	if (!dev)
+	if (!dev || !netif_is_bridge_port(dev))
 		return NULL;
 
 	br_port = rcu_dereference(dev->br_port);

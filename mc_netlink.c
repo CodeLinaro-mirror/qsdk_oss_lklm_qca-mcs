@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012, 2015, 2018-2020 The Linux Foundation. All rights reserved.
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -27,7 +27,6 @@
 
 static struct sock *mc_nl_sk = NULL;
 static __be32 event_pid = MC_INVALID_PID;
-
 /*
  * mc_acltbl_update
  *	update the acl rules table
@@ -418,9 +417,17 @@ static void *mc_find_entry_by_mdb(struct mc_struct *mc, struct mc_mdb_entry *mdb
  *	add group into a list
  *	called with rcu_read_lock()
  */
-static void mc_group_list_add(struct mc_ip *pgroup, struct mc_glist_entry **ghead)
+static void mc_group_list_add(struct mc_ip *pgroup, struct mc_glist_entry **notifyhead)
 {
 	struct mc_glist_entry *pge;
+
+	pge = *notifyhead;
+	while(pge) {
+		if (!memcmp(pgroup, &pge->group, sizeof(struct mc_ip)))
+			return;
+
+		pge = pge->next;
+	}
 
 	pge = kmalloc(sizeof(struct mc_glist_entry), GFP_ATOMIC);
 	if (!pge) {
@@ -429,8 +436,8 @@ static void mc_group_list_add(struct mc_ip *pgroup, struct mc_glist_entry **ghea
 	}
 
 	memcpy(&pge->group, pgroup, sizeof(struct mc_ip));
-	pge->next = *ghead;
-	*ghead = pge;
+	pge->next = *notifyhead;
+	*notifyhead = pge;
 }
 
 /*
@@ -470,16 +477,18 @@ void mc_group_notify_one(struct mc_struct *mc, struct mc_ip *pgroup)
 
 /*
  * mc_group_notify
- *	notify all group in the list to listener
+ *	notify all groups in the list to listener
  *	called with lock-free
  */
-static void mc_group_notify(struct mc_struct *mc, struct mc_glist_entry **ghead)
+static void mc_group_notify(struct mc_struct *mc, struct mc_glist_entry **notifyhead)
 {
 	struct mc_glist_entry *pge;
 	struct mc_glist_entry *prev;
 
-	pge = *ghead;
-	*ghead = NULL;
+	spin_lock_bh(&mc->lock);
+	pge = *notifyhead;
+	*notifyhead = NULL;
+	spin_unlock_bh(&mc->lock);
 
 	while (pge) {
 		mc_group_notify_one(mc, &pge->group);
@@ -493,7 +502,7 @@ static void mc_group_notify(struct mc_struct *mc, struct mc_glist_entry **ghead)
 /*
  * mc_set_psw_encap - set path selected way encapsulation
  */
-static void mc_set_psw_encap(struct mc_struct *mc, void *param, __be32 param_len, struct mc_glist_entry **ghead)
+static void mc_set_psw_encap(struct mc_struct *mc, void *param, __be32 param_len, struct mc_glist_entry **notifyhead)
 {
 	int i, entry_cnt = param_len / sizeof(struct __mc_encaptbl_entry);
 	struct __mc_encaptbl_entry *entry = param;
@@ -528,7 +537,9 @@ static void mc_set_psw_encap(struct mc_struct *mc, void *param, __be32 param_len
 			}
 			write_unlock_bh(&mdb->rwlock);
 			if (entry_changed) {
-				mc_group_list_add(&mdb->group, ghead);
+				spin_lock_bh(&mc->lock);
+				mc_group_list_add(&mdb->group, notifyhead);
+				spin_unlock_bh(&mc->lock);
 			}
 		}
 	}
@@ -538,7 +549,7 @@ static void mc_set_psw_encap(struct mc_struct *mc, void *param, __be32 param_len
  * mc_set_psw_flood
  *	flood the path selected way in the whole mdb database
  */
-static void mc_set_psw_flood(struct mc_struct *mc, void *param, __be32 param_len, struct mc_glist_entry **ghead)
+static void mc_set_psw_flood(struct mc_struct *mc, void *param, __be32 param_len, struct mc_glist_entry **notifyhead)
 {
 	int i, entry_cnt = param_len / sizeof(struct __mc_floodtbl_entry);
 	struct __mc_floodtbl_entry *entry = param;
@@ -572,7 +583,9 @@ static void mc_set_psw_flood(struct mc_struct *mc, void *param, __be32 param_len
 			write_unlock_bh(&mdb->rwlock);
 
 			if (entry_changed) {
-				mc_group_list_add(&mdb->group, ghead);
+				spin_lock_bh(&mc->lock);
+				mc_group_list_add(&mdb->group, notifyhead);
+				spin_unlock_bh(&mc->lock);
 			}
 		}
 	}
@@ -774,16 +787,12 @@ static void __mc_netlink_receive(struct sk_buff *__skb)
 			break;
 		case MC_MSG_SET_PSW_ENCAP:
 			{
-				struct mc_glist_entry *ghead = NULL;
-				mc_set_psw_encap(mc, msgdata, msghdr->buf_len, &ghead);
-				mc_group_notify(mc, &ghead);
+				mc_set_psw_encap(mc, msgdata, msghdr->buf_len, &mc->notifyhead);
 			}
 			break;
 		case MC_MSG_SET_PSW_FLOOD:
 			{
-				struct mc_glist_entry *ghead = NULL;
-				mc_set_psw_flood(mc, msgdata, msghdr->buf_len, &ghead);
-				mc_group_notify(mc, &ghead);
+				mc_set_psw_flood(mc, msgdata, msghdr->buf_len, &mc->notifyhead);
 			}
 			break;
 		case MC_MSG_GET_ACL:
@@ -848,6 +857,12 @@ static void __mc_netlink_receive(struct sk_buff *__skb)
 				if (mc_rtports_fillbuf(mc, msgdata, msghdr->buf_len,
 							&msghdr->bytes_written, &msghdr->bytes_needed))
 					msghdr->status = MC_STATUS_BUFFER_OVERFLOW;
+			}
+			break;
+		case MC_MSG_SET_NOTIFY:
+			{
+				mc_group_notify(mc, &mc->notifyhead);
+				MC_PRINT(KERN_INFO "%s:notification.\n", __func__);
 			}
 			break;
 		default:

@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012, 2015-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -641,9 +641,10 @@ static void mc_mdb_destroy(struct mc_mdb_entry *mdb)
 	hlist_del_rcu(&mdb->hlist);
 	del_timer_sync(&mdb->etimer);
 
-	if (mdb->flood_ifcnt != 0) {
-		mc_group_notify_one(mdb->mc, &mdb->group);
+	if (mdb->flood_ifcnt || mdb->encap_dev_cnt) {
 		mdb->flood_ifcnt = 0;
+		mdb->encap_dev_cnt = 0;
+		mc_group_notify_one(mdb->mc, &mdb->group);
 	}
 	call_rcu(&mdb->rcu, mc_mdb_rcu_free);
 }
@@ -2751,12 +2752,23 @@ static void mc_rlist_flush(struct mc_struct *mc)
 
 /*
  * mc_mdb_flush
- *	Flush mdb
- *	This funciton must be called with spin lock held
+ *	Flush all the mdb in the system
  */
 static void mc_mdb_flush(struct mc_struct *mc)
 {
 	int i;
+	struct mc_glist_entry *pge;
+
+	spin_lock_bh(&mc->lock);
+	pge = mc->notifyhead;
+	mc->notifyhead = NULL;
+	spin_unlock_bh(&mc->lock);
+
+	while(pge) {
+		struct mc_glist_entry *next = pge->next;
+		kfree(pge);
+		pge = next;
+	}
 
 	for (i = 0; i < MC_HASH_SIZE; i++) {
 		struct mc_mdb_entry *mdb;
