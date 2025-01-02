@@ -2770,6 +2770,7 @@ static void mc_mdb_flush(struct mc_struct *mc)
 		pge = next;
 	}
 
+	spin_lock_bh(&mc->lock);
 	for (i = 0; i < MC_HASH_SIZE; i++) {
 		struct mc_mdb_entry *mdb;
 		struct hlist_node *h, *n;
@@ -2777,6 +2778,7 @@ static void mc_mdb_flush(struct mc_struct *mc)
 			mc_mdb_destroy(mdb);
 		}
 	}
+	spin_unlock_bh(&mc->lock);
 }
 
 /* mc_dev_get
@@ -2930,12 +2932,15 @@ static int mc_stop(struct mc_struct *mc)
 		return 0;
 	}
 
+	spin_lock_bh(&mc->lock);
 	if (!mc->started) {
+		spin_unlock_bh(&mc->lock);
 		MC_PRINT(KERN_DEBUG "%s: mc function is already disabled!\n", __func__);
 		return 0;
 	}
-
 	mc->started = 0;
+	spin_unlock_bh(&mc->lock);
+
 	spin_lock_bh(&g_mcs_lock);
 	mc_forward_exit();
 	spin_unlock_bh(&g_mcs_lock);
