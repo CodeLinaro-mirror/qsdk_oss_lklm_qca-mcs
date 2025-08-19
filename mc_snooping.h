@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012, 2015, 2017, 2019 The Linux Foundation. All rights reserved.
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -47,6 +47,14 @@ int mc_has_more_instance(void);
 extern void mc_nbp_change(struct mc_struct *mc, struct net_device *dev, int event);
 
 extern void mc_fdb_change(__u8 *mac, int change);
+
+struct mc_fdb_group *mc_fdb_group_find(struct hlist_head *head, __u8 *mac);
+
+void mc_fdb_group_destroy(struct mc_fdb_group *fg);
+
+struct sk_buff *mc_ipv4_alloc_query(struct mc_struct *mc, __be32 group, __u8 *mac, int is_v3);
+
+struct sk_buff *mc_ipv6_alloc_query(struct mc_struct *mc, struct in6_addr *group, __u8 *mac, int is_v2);
 
 #endif
 

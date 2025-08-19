@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2012, 2015-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -15,6 +15,11 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <linux/version.h>
+#include <linux/types.h>
+#include <linux/skbuff.h>
+#include <linux/kthread.h>
+#include <linux/string.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/spinlock.h>
@@ -76,7 +81,7 @@ static const u8 mc_query_h_dest[ETH_ALEN] = {0x01, 0x00, 0x5e, 0x00, 0x00, 0x01}
 /* mc_ipv4_alloc_query
  *	alloc ipv4 group specified query
  */
-static struct sk_buff *mc_ipv4_alloc_query(struct mc_struct *mc, __be32 group, __u8 *mac, int is_v3)
+struct sk_buff *mc_ipv4_alloc_query(struct mc_struct *mc, __be32 group, __u8 *mac, int is_v3)
 {
 	struct sk_buff *skb;
 	struct igmphdr *ih;
@@ -87,6 +92,7 @@ static struct sk_buff *mc_ipv4_alloc_query(struct mc_struct *mc, __be32 group, _
 
 	skb = netdev_alloc_skb(dev, (sizeof(*eth) + sizeof(*iph) +
 				(is_v3 ? sizeof(*ih3) : sizeof(*ih)) + 4 + NET_IP_ALIGN));
+
 	if (NET_IP_ALIGN && skb)
 		skb_reserve(skb, NET_IP_ALIGN);
 
@@ -163,7 +169,7 @@ out:
 /* mc_ipv6_alloc_query
  *	alloc ipv6 group specified query
  */
-static struct sk_buff *mc_ipv6_alloc_query(struct mc_struct *mc,
+struct sk_buff *mc_ipv6_alloc_query(struct mc_struct *mc,
 					   struct in6_addr *group, __u8 *mac, int is_v2)
 {
 	struct sk_buff *skb;
@@ -177,6 +183,7 @@ static struct sk_buff *mc_ipv6_alloc_query(struct mc_struct *mc,
 
 	skb = netdev_alloc_skb(dev, sizeof(*eth) + sizeof(*ip6h) +
 			8 + (is_v2 ? sizeof(*mld2q) : sizeof(*mldq)) + NET_IP_ALIGN);
+
 	if (!skb)
 		goto out;
 
@@ -199,7 +206,7 @@ static struct sk_buff *mc_ipv6_alloc_query(struct mc_struct *mc,
 	ip6h = ipv6_hdr(skb);
 
 	*(__force __be32 *)ip6h = htonl(0x60000000);
-	ip6h->payload_len = 8 + (is_v2 ? sizeof(*mld2q) : sizeof(*mldq));
+	ip6h->payload_len = htons(8 + (is_v2 ? sizeof(*mld2q) : sizeof(*mldq)));
 	ip6h->nexthdr = IPPROTO_HOPOPTS;
 	ip6h->hop_limit = 1;
 	ipv6_addr_set(&ip6h->saddr, htonl(0xfe800000), 0, 0, htonl(1));
@@ -207,8 +214,7 @@ static struct sk_buff *mc_ipv6_alloc_query(struct mc_struct *mc,
 	/*
 	 * ipv6_addr_set(&ip6h->daddr, htonl(0xff020000), 0, 0, htonl(1));
 	 */
-	mc_ipv6_addr_copy(&ip6h->daddr, group);
-
+	mc_ipv6_addr_copy(&ip6h->daddr, ipv6_addr_any(group)? &in6addr_linklocal_allnodes:group);
 	hopopt = (u8 *)(ip6h + 1);
 	hopopt[0] = IPPROTO_ICMPV6;			  /* next hdr */
 	hopopt[1] = 0;						  /* length of HbH */
@@ -423,7 +429,7 @@ static struct mc_querier_entry *mc_querier_entry_create(struct hlist_head *head,
 /* mc_fdb_group_find
  *	find a fdb in a group
  */
-static struct mc_fdb_group *mc_fdb_group_find(struct hlist_head *head,
+struct mc_fdb_group *mc_fdb_group_find(struct hlist_head *head,
 		__u8 *mac)
 {
 	struct hlist_node *h;
@@ -451,7 +457,7 @@ static void mc_fdb_group_rcu_free(struct rcu_head *head)
 /* mc_fdb_group_destroy
  *	destroy the fdb in the gropu
  */
-static void mc_fdb_group_destroy(struct mc_fdb_group *fg)
+void mc_fdb_group_destroy(struct mc_fdb_group *fg)
 {
 	hlist_del_rcu(&fg->fslist);
 

@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2012, 2015, 2017, 2020 The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
  * copyright notice and this permission notice appear in all copies.
@@ -21,6 +22,7 @@
 #include "mc_snooping.h"
 #include "mc_forward.h"
 #include "mc_ovs.h"
+#include "mc_wifi_events.h"
 
 /* mc_init
  *	module init
@@ -33,13 +35,22 @@ static int __init mc_init(void)
 	if (mc_netfilter_init())
 		goto netlink_clean;
 
+	int ret = mc_event_start();
+	if (ret != 0) {
+		printk(KERN_ERR "Error: Not able to start the thread\n");
+		goto netfilter_clean;
+	}
+
 	mc_snooping_init();
+
 #ifdef MC_SUPPORT_OVS
 	mc_ovs_init();
 #endif
 	printk("QCA multicast snooping installed successfully\n");
 	return 0;
 
+netfilter_clean:
+	mc_netfilter_exit();
 netlink_clean:
 	mc_netlink_exit();
 out:
@@ -57,6 +68,7 @@ static void __exit mc_exit(void)
 #endif
 	mc_netlink_exit();
 	mc_netfilter_exit();
+	mc_event_stop();
 	mc_snooping_exit();
 
 	printk("QCA multicast snooping uninstalled\n");
