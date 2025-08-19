@@ -34,6 +34,8 @@ ccflags-y += -I$(CURDIR) \
 
 ccflags-$(CONFIG_SUPPORT_MLD) += -DMC_SUPPORT_MLD
 
+ccflags-$(CONFIG_WLAN_FEATURE_VBSS) += -DWLAN_FEATURE_VBSS
+
 # Module extra compilation flags
 ccflags-y += -Werror -Wall -g
 
@@ -48,7 +50,8 @@ $(TARGET)-objs := \
 	mc_netfilter.o \
 	mc_snooping.o \
 	mc_forward.o \
-	mc_ecm.o
+	mc_ecm.o \
+	mc_wifi_events.o
 
 $(TARGET)-$(CONFIG_SUPPORT_OVS) += mc_ovs.o
 ccflags-$(CONFIG_SUPPORT_OVS) += -I$(STAGING_DIR)/usr/include/qca-ovsmgr \
