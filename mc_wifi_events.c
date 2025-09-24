@@ -423,11 +423,11 @@ void mc_handle_vbss_event(struct net_device *dev, u8 *data, size_t len){
 	 */
 	memcpy(mac, nla_data(attr_tb[QCA_WLAN_VENDOR_ATTR_VBSS_STA_MAC_ADDR]), ETH_ALEN);
 	if (opid == QCA_WLAN_VENDOR_VBSS_OPS_NOTIFY_STA_TXRX_STOPPED){
-		printk(KERN_INFO "MCS: Handling TX/RX stopped event\n");
+		printk(KERN_DEBUG "MCS: Handling TX/RX stopped event\n");
 		mc_vbss_txrx_stopped_event(dev, mac);
 	}
 	else if(opid == QCA_WLAN_VENDOR_VBSS_OPS_NOTIFY_STA_TXRX_STARTED){
-		printk(KERN_INFO "MCS: Handling TX/RX started event\n");
+		printk(KERN_DEBUG "MCS: Handling TX/RX started event\n");
 		mc_vbss_txrx_started_event(dev, mac);
 	}
 }
@@ -536,12 +536,12 @@ static int mc_event_handler(void *buf, int len)
 		hdr = NLMSG_DATA(nlh);
 		switch (hdr->cmd) {
 		case NL80211_CMD_DEL_STATION:
-			printk(KERN_INFO "MCS: Processing station leave event\n");
+			printk(KERN_DEBUG "MCS: Processing station leave event\n");
 			mc_process_sta_leave_event(nlh, hdr->cmd);
 			break;
 
 		case NL80211_CMD_VENDOR:
-			printk(KERN_INFO "MCS: Processing vendor-specific event\n");
+			printk(KERN_DEBUG "MCS: Processing vendor-specific event\n");
 			mc_process_vendor_event(nlh, hdr->cmd);
 			break;
 		}
@@ -628,10 +628,10 @@ int mc_parse_genl_ctrl_response(struct nlmsghdr *nlh, int *mlme_id, int *vendor_
 	        return -1;
 	}
 	if (res_mlme >= 0)
-		printk(KERN_INFO"MLME group found");
+		printk(KERN_DEBUG"MLME group found");
 
 	if (res_vendor >= 0)
-		printk(KERN_INFO"VENDOR group found");
+		printk(KERN_DEBUG"VENDOR group found");
 
 	return 0;
 }
@@ -768,7 +768,7 @@ int mc_resolve_nl80211_family(struct socket *sock, struct sockaddr_nl *addr)
 	 */
 	nlh = (struct nlmsghdr *)buf;
 	while (NLMSG_OK(nlh, size)) {
-		printk(KERN_INFO"%px: Received an NL response, length %d type %d\n", nlh, nlh->nlmsg_len, nlh->nlmsg_type);
+		printk(KERN_DEBUG"%px: Received an NL response, length %d type %d\n", nlh, nlh->nlmsg_len, nlh->nlmsg_type);
 		ret = mc_parse_genl_ctrl_response(nlh, &mlme_id, &vendor_id);
 		if (ret < 0) {
 			printk(KERN_WARNING"%px: Failed to parse the multicast group message %d\n", sock, ret);
@@ -795,7 +795,7 @@ int mc_resolve_nl80211_family(struct socket *sock, struct sockaddr_nl *addr)
 			return ret;
 		}
 
-		printk(KERN_INFO"%px: Adding a this sokcet as a member to NL80211 MLME multicast group %d \n", sock, mlme_id);
+		printk(KERN_DEBUG"%px: Adding a this sokcet as a member to NL80211 MLME multicast group %d \n", sock, mlme_id);
 	}
 
 	if (vendor_id != MCS_NL80211_MC_GROUP_INVALID_ID) {
@@ -805,7 +805,7 @@ int mc_resolve_nl80211_family(struct socket *sock, struct sockaddr_nl *addr)
 			return ret;
 		}
 
-		printk(KERN_INFO"%px: Adding a this sokcet as a member to NL80211 VENDOR multicast group %d \n", sock, vendor_id);
+		printk(KERN_DEBUG"%px: Adding a this sokcet as a member to NL80211 VENDOR multicast group %d \n", sock, vendor_id);
 	}
 
 	return 0;
@@ -864,10 +864,10 @@ static void mc_event_thread(void)
 	/*
 	 * Start listening to the Wi-Fi events.
 	 */
-	printk(KERN_INFO"mc_event thread started\n");
+	printk(KERN_DEBUG"mc_event thread started\n");
 	while (!kthread_should_stop()) {
 		size = mc_event_recv(__ewn.sock, &saddr, buf, len);
-		printk(KERN_INFO"Multicast event received of len %d\n", size);
+		printk(KERN_DEBUG"Multicast event received of len %d\n", size);
 
 		if (signal_pending(current))
 			break;
@@ -880,7 +880,7 @@ static void mc_event_thread(void)
 	}
 
 	kfree(buf);
-	printk(KERN_INFO"mc_event thread stopped\n");
+	printk(KERN_DEBUG"mc_event thread stopped\n");
 exit2:
 	sock_release(__ewn.sock);
 exit1:
@@ -917,13 +917,12 @@ int mc_event_stop(void)
 		return 0;
 	}
 
-	printk(KERN_INFO"kill mc_event thread\n");
+	printk(KERN_DEBUG"kill mc_event thread\n");
 	send_sig(SIGKILL, __ewn.thread, 1);
-	printk(KERN_INFO"Stopping kthread.\n");
+	printk(KERN_DEBUG"Stopping kthread.\n");
 	err = kthread_stop(__ewn.thread);
 	__ewn.thread = NULL;
-	printk(KERN_INFO"Stopped kthread.\n");
-	printk(KERN_INFO"killing mc_event thread succeeded.\n");
+	printk(KERN_DEBUG"Stopped kthread.\n");
 
 	return err;
 }
