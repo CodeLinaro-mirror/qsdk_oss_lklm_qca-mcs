@@ -141,7 +141,7 @@ void mc_sta_leave_event(struct net_device *dev,__u8 *from_mac)
 				fg = mc_fdb_group_find(&pg->fslist, from_mac);
 				if (fg) {
 					mc_fdb_group_destroy(fg);
-					printk(KERN_DEBUG" mc fdb entry is deleted\n");
+					MC_PRINT(KERN_DEBUG" mc fdb entry is deleted\n");
 					break;
 				}
 			}
@@ -303,7 +303,7 @@ void mc_vbss_txrx_started_event_v6(struct mc_struct *mc, void *port, __u8 *mac){
 
 	skb = mc_vbss_ipv6_alloc_query(mc, (struct in6_addr *)&in6addr_any, mac, 0);
 	if (!skb){
-		printk(KERN_DEBUG "Failed to allocate skb for ipv6 query\n");
+		MC_PRINT(KERN_DEBUG "Failed to allocate skb for ipv6 query\n");
 		return;
 	}
 	skb->dev = port;
@@ -324,7 +324,7 @@ void mc_vbss_txrx_started_event_v4(struct mc_struct *mc, void *port, __u8 *mac){
 	skb = mc_vbss_ipv4_alloc_query(mc, 0, mac, 0);
 
 	if (!skb){
-		printk(KERN_DEBUG "Failed to allocate skb for ipv4 query\n");
+		MC_PRINT(KERN_DEBUG "Failed to allocate skb for ipv4 query\n");
 		return;
 	}
 
@@ -337,44 +337,13 @@ void mc_vbss_txrx_started_event_v4(struct mc_struct *mc, void *port, __u8 *mac){
  * mc_vbss_txrx_started_event()
  * 	Parse and process VBSS resume event
  */
-void mc_vbss_txrx_started_event(struct net_device *dev,__u8 *from_mac){
-
-	struct mc_struct *mc;
-	struct net_device *pdev;
-
-	/*
-	 * Added rtnl_lock() to prevent assertion errors
-	 */
-	rtnl_lock();
-	/*
-	 *Get the master (upper) network device of the given interface.
-	 */
-	pdev = netdev_master_upper_dev_get(dev);
-	if (!pdev) {
-		rtnl_unlock();
-		printk(KERN_DEBUG "%s: TX/RX Started received for interface without a master \n", __func__);
-		return;
-	}
-
-	if (!netif_is_bridge_master(pdev)) {
-		rtnl_unlock();
-		printk(KERN_DEBUG "%s: pdev is not a bridge netdevice\n", __func__);
-		return;
-	}
-
-	mc = MC_DEV(pdev);
-	if (!mc) {
-		rtnl_unlock();
-		printk(KERN_DEBUG "%s: MC_DEV returned NULL for device %s\n", __func__, pdev->name);
-		return;
-	}
+void mc_vbss_txrx_started_event(struct mc_struct *mc, struct net_device *dev,__u8 *from_mac){
 
 	MC_PRINT("%s: TX/RX started event received on port %s for MAC %pM\n", __func__, dev->name, from_mac);
 	mc_vbss_txrx_started_event_v4(mc, dev, from_mac);
 
 	mc_vbss_txrx_started_event_v6(mc, dev, from_mac);
 
-	rtnl_unlock();
 }
 
 /* mc_handle_vbss_event()
@@ -382,39 +351,72 @@ void mc_vbss_txrx_started_event(struct net_device *dev,__u8 *from_mac){
  */
 void mc_handle_vbss_event(struct net_device *dev, u8 *data, size_t len){
 
+	struct mc_struct *mc;
+	struct net_device *pdev;
+
+        /*
+         * Added rtnl_lock() to prevent assertion errors
+         */
+        rtnl_lock();
+        /*
+         *Get the master (upper) network device of the given interface.
+         */
+        pdev = netdev_master_upper_dev_get(dev);
+        if (!pdev) {
+                rtnl_unlock();
+                printk(KERN_DEBUG "%s: VBSS event received for interface without a master \n", __func__);
+                return;
+        }
+
+        if (!netif_is_bridge_master(pdev)) {
+                rtnl_unlock();
+                printk(KERN_DEBUG "%s: pdev is not a bridge netdevice\n", __func__);
+                return;
+        }
+
+        mc = MC_DEV(pdev);
+        if (!mc) {
+                rtnl_unlock();
+                printk(KERN_DEBUG "%s: MC_DEV returned NULL for device %s\n", __func__, pdev->name);
+                return;
+        }
+
+	rtnl_unlock();
+
+	MC_PRINT(KERN_DEBUG "MCS: Processing VBSS event");
 	uint8_t mac[ETH_ALEN];
 	uint8_t opid;
 	struct nlattr *attr[QCA_WLAN_VENDOR_ATTR_VBSS_MAX + 1] = {0};
 	struct nlattr *attr_tb[QCA_WLAN_VENDOR_ATTR_VBSS_OPS_INFO_MAX + 1] = {0};
 
 	if (nla_parse(attr, QCA_WLAN_VENDOR_ATTR_VBSS_MAX, (const struct nlattr *)data, len, vbss_req_policy, NULL)) {
-		printk(KERN_DEBUG "MCS: Failed to parse top-level attributes\n");
+		MC_PRINT(KERN_DEBUG "MCS: Failed to parse top-level attributes\n");
 		return;
 	}
 
 	if (!attr[QCA_WLAN_VENDOR_ATTR_VBSS_OPS_ID]){
-		printk(KERN_DEBUG "MCS: Operation ID attribute missing\n");
+		MC_PRINT(KERN_DEBUG "MCS: Operation ID attribute missing\n");
 		return;
 	}
 	opid = nla_get_u8(attr[QCA_WLAN_VENDOR_ATTR_VBSS_OPS_ID]);
 
 	if (opid != QCA_WLAN_VENDOR_VBSS_OPS_NOTIFY_STA_TXRX_STOPPED && opid != QCA_WLAN_VENDOR_VBSS_OPS_NOTIFY_STA_TXRX_STARTED){
-		printk(KERN_DEBUG "MCS: Unsupported operation ID value: %u\n", opid);
+		MC_PRINT(KERN_DEBUG "MCS: Unsupported operation ID value: %u\n", opid);
 		return;
 	}
 
 	if (!attr[QCA_WLAN_VENDOR_ATTR_VBSS_OPS_INFO]){
-		printk(KERN_DEBUG "MCS: Operation info attribute missing\n");
+		MC_PRINT(KERN_DEBUG "MCS: Operation info attribute missing\n");
 		return;
 	}
 
 	if (nla_parse_nested(attr_tb, QCA_WLAN_VENDOR_ATTR_VBSS_OPS_INFO_MAX,attr[QCA_WLAN_VENDOR_ATTR_VBSS_OPS_INFO],vbss_ops_info_policy, NULL)){
-		printk(KERN_DEBUG "MCS: Failed to parse nested operation info attributes\n");
+		MC_PRINT(KERN_DEBUG "MCS: Failed to parse nested operation info attributes\n");
 		return;
 	}
 
 	if (!attr_tb[QCA_WLAN_VENDOR_ATTR_VBSS_STA_MAC_ADDR]){
-		printk(KERN_DEBUG "MCS: Station MAC address attribute missing\n");
+		MC_PRINT(KERN_DEBUG "MCS: Station MAC address attribute missing\n");
 		return;
 	}
 
@@ -423,12 +425,12 @@ void mc_handle_vbss_event(struct net_device *dev, u8 *data, size_t len){
 	 */
 	memcpy(mac, nla_data(attr_tb[QCA_WLAN_VENDOR_ATTR_VBSS_STA_MAC_ADDR]), ETH_ALEN);
 	if (opid == QCA_WLAN_VENDOR_VBSS_OPS_NOTIFY_STA_TXRX_STOPPED){
-		printk(KERN_DEBUG "MCS: Handling TX/RX stopped event\n");
+		MC_PRINT(KERN_DEBUG "MCS: Handling TX/RX stopped event\n");
 		mc_vbss_txrx_stopped_event(dev, mac);
 	}
 	else if(opid == QCA_WLAN_VENDOR_VBSS_OPS_NOTIFY_STA_TXRX_STARTED){
-		printk(KERN_DEBUG "MCS: Handling TX/RX started event\n");
-		mc_vbss_txrx_started_event(dev, mac);
+		MC_PRINT(KERN_DEBUG "MCS: Handling TX/RX started event\n");
+		mc_vbss_txrx_started_event(mc, dev, mac);
 	}
 }
 #endif
@@ -541,7 +543,6 @@ static int mc_event_handler(void *buf, int len)
 			break;
 
 		case NL80211_CMD_VENDOR:
-			printk(KERN_DEBUG "MCS: Processing vendor-specific event\n");
 			mc_process_vendor_event(nlh, hdr->cmd);
 			break;
 		}
@@ -813,8 +814,8 @@ int mc_resolve_nl80211_family(struct socket *sock, struct sockaddr_nl *addr)
 
 /*
  * mc_event_thread()
- * 	This function creates a socket to listen for events from the nl80211 family,
- * 	resolves the netlink family, allocates a buffer, and processes incoming events in a loop.
+ *     This function creates a socket to listen for events from the nl80211 family,
+ *     resolves the netlink family, allocates a buffer, and processes incoming events in a loop.
  */
 static void mc_event_thread(void)
 {
@@ -867,7 +868,6 @@ static void mc_event_thread(void)
 	printk(KERN_DEBUG"mc_event thread started\n");
 	while (!kthread_should_stop()) {
 		size = mc_event_recv(__ewn.sock, &saddr, buf, len);
-		printk(KERN_DEBUG"Multicast event received of len %d\n", size);
 
 		if (signal_pending(current))
 			break;
