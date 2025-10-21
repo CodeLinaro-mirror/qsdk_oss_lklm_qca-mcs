@@ -1,18 +1,7 @@
 /*
  * Copyright (c) 2012, 2015, 2018-2020 The Linux Foundation. All rights reserved.
- * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
- *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- *
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
- * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
- * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
- * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: ISC
  */
 
 #include <linux/kernel.h>
@@ -413,34 +402,6 @@ static void *mc_find_entry_by_mdb(struct mc_struct *mc, struct mc_mdb_entry *mdb
 }
 
 /*
- * mc_group_list_add
- *	add group into a list
- *	called with rcu_read_lock()
- */
-static void mc_group_list_add(struct mc_ip *pgroup, struct mc_glist_entry **notifyhead)
-{
-	struct mc_glist_entry *pge;
-
-	pge = *notifyhead;
-	while(pge) {
-		if (!memcmp(pgroup, &pge->group, sizeof(struct mc_ip)))
-			return;
-
-		pge = pge->next;
-	}
-
-	pge = kmalloc(sizeof(struct mc_glist_entry), GFP_ATOMIC);
-	if (!pge) {
-		printk("MC out-of-memory\n");
-		return;
-	}
-
-	memcpy(&pge->group, pgroup, sizeof(struct mc_ip));
-	pge->next = *notifyhead;
-	*notifyhead = pge;
-}
-
-/*
  * mc_group_notify_one
  *	notify a group to the listeners
  */
@@ -474,35 +435,35 @@ void mc_group_notify_one(struct mc_struct *mc, struct mc_ip *pgroup)
 #endif
 }
 
-
 /*
  * mc_group_notify
- *	notify all groups in the list to listener
- *	called with lock-free
+ *	notify all groups in the message to listener
  */
-static void mc_group_notify(struct mc_struct *mc, struct mc_glist_entry **notifyhead)
+static void mc_group_notify(struct mc_struct *mc, void *data, __be32 len)
 {
-	struct mc_glist_entry *pge;
-	struct mc_glist_entry *prev;
+	int i, entry_cnt = len / sizeof(struct __mc_group);
+	struct __mc_group *entry_group = (struct __mc_group *)data;
+	struct mc_ip group;
 
-	spin_lock_bh(&mc->lock);
-	pge = *notifyhead;
-	*notifyhead = NULL;
-	spin_unlock_bh(&mc->lock);
-
-	while (pge) {
-		mc_group_notify_one(mc, &pge->group);
-		prev = pge;
-		pge = pge->next;
-		kfree(prev);
+	for (i = 0; i < entry_cnt; i++) {
+		memset(&group, 0, sizeof group);
+		group.pro = entry_group->pro;
+		if (group.pro == htons(ETH_P_IP))
+			group.u.ip4 = entry_group->u.ip4;
+#ifdef MC_SUPPORT_MLD
+		else
+			memcpy(group.u.ip6.s6_addr, entry_group->u.ip6, sizeof(struct in6_addr));
+#endif
+		mc_group_notify_one(mc, &group);
+		entry_group++;
 	}
-
+	MC_PRINT(KERN_INFO "%s:notified %d group.\n", __func__, entry_cnt);
 }
 
 /*
  * mc_set_psw_encap - set path selected way encapsulation
  */
-static void mc_set_psw_encap(struct mc_struct *mc, void *param, __be32 param_len, struct mc_glist_entry **notifyhead)
+static void mc_set_psw_encap(struct mc_struct *mc, void *param, __be32 param_len)
 {
 	int i, entry_cnt = param_len / sizeof(struct __mc_encaptbl_entry);
 	struct __mc_encaptbl_entry *entry = param;
@@ -514,7 +475,6 @@ static void mc_set_psw_encap(struct mc_struct *mc, void *param, __be32 param_len
 		struct hlist_node *mdbh;
 
 		os_hlist_for_each_entry_rcu(mdb, mdbh, &mc->hash[i], hlist) {
-			int entry_changed = 0;
 			write_lock_bh(&mdb->rwlock);
 			if (entry_cnt && ((entry = mc_find_entry_by_mdb(mc, mdb,
 								sizeof(struct __mc_encaptbl_entry), param, param_len)) != NULL)) {
@@ -523,7 +483,6 @@ static void mc_set_psw_encap(struct mc_struct *mc, void *param, __be32 param_len
 				if (encap_dev_cnt != mdb->encap_dev_cnt ||
 					memcmp(mdb->encap_dev, entry->dev,
 						mdb->encap_dev_cnt * sizeof(struct __mc_encaptbl_dev))) {
-					entry_changed = 1;
 
 					memcpy(mdb->encap_dev, entry->dev,
 							mdb->encap_dev_cnt * sizeof(struct __mc_encaptbl_dev));
@@ -531,16 +490,10 @@ static void mc_set_psw_encap(struct mc_struct *mc, void *param, __be32 param_len
 			} else {
 				if (mdb->encap_dev_cnt) {
 					mdb->encap_dev_cnt = 0;
-					entry_changed = 1;
 					memset(mdb->encap_dev, 0,  sizeof(mdb->encap_dev));
 				}
 			}
 			write_unlock_bh(&mdb->rwlock);
-			if (entry_changed) {
-				spin_lock_bh(&mc->lock);
-				mc_group_list_add(&mdb->group, notifyhead);
-				spin_unlock_bh(&mc->lock);
-			}
 		}
 	}
 }
@@ -549,44 +502,32 @@ static void mc_set_psw_encap(struct mc_struct *mc, void *param, __be32 param_len
  * mc_set_psw_flood
  *	flood the path selected way in the whole mdb database
  */
-static void mc_set_psw_flood(struct mc_struct *mc, void *param, __be32 param_len, struct mc_glist_entry **notifyhead)
+static void mc_set_psw_flood(struct mc_struct *mc, void *param, __be32 param_len)
 {
 	int i, entry_cnt = param_len / sizeof(struct __mc_floodtbl_entry);
 	struct __mc_floodtbl_entry *entry = param;
 	int    flood_ifcnt;
-	int    entry_changed;
 
-	MC_PRINT("%s: Update flood table\n", __func__);
+	MC_PRINT("%s: %s flood table\n", __func__, entry_cnt ? "Update" : "Clear");
 	for (i = 0; i < MC_HASH_SIZE; i++) {
 		struct mc_mdb_entry *mdb;
 		struct hlist_node *mdbh;
 
 		os_hlist_for_each_entry_rcu(mdb, mdbh, &mc->hash[i], hlist) {
-			entry_changed = 0;
 
 			write_lock_bh(&mdb->rwlock);
 			if (entry_cnt && ((entry = mc_find_entry_by_mdb(mc, mdb,
 								sizeof(struct __mc_floodtbl_entry), param, param_len)) != NULL)) {
 				flood_ifcnt = mdb->flood_ifcnt;
 				mdb->flood_ifcnt = entry->ifcnt > MC_FLOOD_IF_MAX ? MC_FLOOD_IF_MAX : entry->ifcnt;
-				if (flood_ifcnt != mdb->flood_ifcnt ||
-					memcmp(mdb->flood_ifindex, entry->ifindex, mdb->flood_ifcnt * sizeof(__be32)))
-					entry_changed = 1;
 				memcpy(mdb->flood_ifindex, entry->ifindex, mdb->flood_ifcnt * sizeof(__be32));
 			} else {
 				if (mdb->flood_ifcnt) {
-					entry_changed = 1;
 					mdb->flood_ifcnt = 0;
 					memset(mdb->flood_ifindex, 0, sizeof(mdb->flood_ifindex));
 				}
 			}
 			write_unlock_bh(&mdb->rwlock);
-
-			if (entry_changed) {
-				spin_lock_bh(&mc->lock);
-				mc_group_list_add(&mdb->group, notifyhead);
-				spin_unlock_bh(&mc->lock);
-			}
 		}
 	}
 }
@@ -787,12 +728,12 @@ static void __mc_netlink_receive(struct sk_buff *__skb)
 			break;
 		case MC_MSG_SET_PSW_ENCAP:
 			{
-				mc_set_psw_encap(mc, msgdata, msghdr->buf_len, &mc->notifyhead);
+				mc_set_psw_encap(mc, msgdata, msghdr->buf_len);
 			}
 			break;
 		case MC_MSG_SET_PSW_FLOOD:
 			{
-				mc_set_psw_flood(mc, msgdata, msghdr->buf_len, &mc->notifyhead);
+				mc_set_psw_flood(mc, msgdata, msghdr->buf_len);
 			}
 			break;
 		case MC_MSG_GET_ACL:
@@ -861,8 +802,7 @@ static void __mc_netlink_receive(struct sk_buff *__skb)
 			break;
 		case MC_MSG_SET_NOTIFY:
 			{
-				mc_group_notify(mc, &mc->notifyhead);
-				MC_PRINT(KERN_INFO "%s:notification.\n", __func__);
+				mc_group_notify(mc, msgdata, msghdr->buf_len);
 			}
 			break;
 		default:
@@ -989,4 +929,3 @@ void mc_netlink_exit(void)
 		mc_nl_sk = NULL;
 	}
 }
-
