@@ -625,6 +625,7 @@ int mc_mdb_destroy_by_port(struct mc_struct *mc, struct mc_ip *mc_group, __u8 *m
  */
 static void mc_mdb_destroy(struct mc_mdb_entry *mdb)
 {
+	struct mc_struct *mc = mdb->mc;
 	struct hlist_node *h;
 	struct mc_port_group *pg;
 
@@ -634,7 +635,14 @@ static void mc_mdb_destroy(struct mc_mdb_entry *mdb)
 	}
 
 	hlist_del_rcu(&mdb->hlist);
+
+	/*
+	 * Avoid AB-BA Lock Ordering Deadlock by releasing shared lock
+	 * while bringing down the (mdb->etimer).
+	 */
+	spin_unlock_bh(&mc->lock);
 	del_timer_sync(&mdb->etimer);
+	spin_lock_bh(&mc->lock);
 
 	if (mdb->flood_ifcnt || mdb->encap_dev_cnt) {
 		mdb->flood_ifcnt = 0;
@@ -2927,11 +2935,17 @@ static int mc_stop(struct mc_struct *mc)
 	spin_lock_bh(&g_mcs_lock);
 	mc_forward_exit();
 	spin_unlock_bh(&g_mcs_lock);
+
+	/*
+	 * Ensure (mc_mdb_cleanup) has finished and
+	 * cannot be re-armed before (mc_mdb_flush) runs.
+	 */
+	del_timer_sync(&mc->agingtimer);
+
 	mc_mdb_flush(mc);
 	mc_rlist_flush(mc);
 
 	del_timer_sync(&mc->qtimer);
-	del_timer_sync(&mc->agingtimer);
 	del_timer_sync(&mc->rtimer);
 	del_timer_sync(&mc->evtimer);
 
