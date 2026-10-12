@@ -1030,7 +1030,7 @@ static int mc_ipv6_sub_source(struct in6_addr *a, __be32 a_cnt, struct in6_addr 
 		}
 		if (m != a_cnt) {
 			if (m < a_cnt - 1)
-				memcpy(&a[m], &a[m + 1], sizeof(*a) * (a_cnt - 1 - m));
+				memmove(&a[m], &a[m + 1], sizeof(*a) * (a_cnt - 1 - m));
 			a_cnt--;
 		}
 		n++;
@@ -1056,7 +1056,7 @@ static int mc_ipv6_mix_source(struct in6_addr *a, __be32 a_cnt, struct in6_addr 
 		}
 		if (m == b_cnt) {
 			if (n < (a_cnt - 1))
-				memcpy(&a[n], &a[n + 1], sizeof(*a) * (a_cnt - n - 1));
+				memmove(&a[n], &a[n + 1], sizeof(*a) * (a_cnt - n - 1));
 			a_cnt--;
 			continue;
 		}
@@ -1130,7 +1130,7 @@ static int mc_ipv4_sub_source(__be32 *a, __be32 a_cnt, __be32 *b, __be32 b_cnt)
 		}
 		if (m != a_cnt) {
 			if (m < a_cnt - 1)
-				memcpy(&a[m], &a[m + 1], sizeof(__be32) * (a_cnt - 1 - m));
+				memmove(&a[m], &a[m + 1], sizeof(__be32) * (a_cnt - 1 - m));
 			a_cnt--;
 		}
 		n++;
@@ -1156,7 +1156,7 @@ static int mc_ipv4_mix_source(__be32 *a, __be32 a_cnt, __be32 *b, __be32 b_cnt)
 
 		if (m == b_cnt) {
 			if (n < (a_cnt - 1))
-				memcpy(&a[n], &a[n + 1], sizeof(__be32) * (a_cnt - n - 1));
+				memmove(&a[n], &a[n + 1], sizeof(__be32) * (a_cnt - n - 1));
 			a_cnt--;
 			continue;
 		}
@@ -1494,7 +1494,7 @@ static int mc_ipv4_source_list_filter(struct mc_mdb_entry *mdb,
 			os_hlist_for_each_entry_rcu(fg, fgh, &pg->fslist, fslist) {
 				if (mc_ipv4_filter_source(fg, srcs[m])) {
 					if (m < grec_nsrcs - 1)
-						memcpy(&srcs[m], &srcs[m+1], sizeof(__be32) * (grec_nsrcs - 1 - m));
+						memmove(&srcs[m], &srcs[m+1], sizeof(__be32) * (grec_nsrcs - 1 - m));
 					grec_nsrcs--;
 					loop_done = 1;
 					break;
@@ -1734,13 +1734,13 @@ static int mc_ipv4_igmp3_report(struct mc_struct *mc,
 			return -EINVAL;
 
 		if (filter_num == ~0 || !grec->grec_nsrcs) { /* Del whole grec */
-			memcpy(skb->data + prev_offset, skb->data + len, tlen - len);
+			memmove(skb->data + prev_offset, skb->data + len, tlen - len);
 			tlen -= len - prev_offset;
 			len = prev_offset;
 			ngroup--;
 		} else { /* Del sources in grec */
 			filter_num *= sizeof(__be32);
-			memcpy(skb->data + len - filter_num, skb->data + len, tlen - len);
+			memmove(skb->data + len - filter_num, skb->data + len, tlen - len);
 			tlen -= filter_num;
 			len = len - filter_num;
 		}
@@ -1823,7 +1823,7 @@ static int mc_ipv6_source_list_filter(struct mc_mdb_entry *mdb,
 			os_hlist_for_each_entry_rcu(fg, fgh, &pg->fslist, fslist) {
 				if (mc_ipv6_filter_source(fg, &srcs[m])) {
 					if (m < grec_nsrcs - 1)
-						memcpy(&srcs[m], &srcs[m+1], sizeof(struct in6_addr) * (grec_nsrcs - 1 - m));
+						memmove(&srcs[m], &srcs[m+1], sizeof(struct in6_addr) * (grec_nsrcs - 1 - m));
 					grec_nsrcs--;
 					loop_done = 1;
 					break;
@@ -2034,13 +2034,13 @@ static int mc_ipv6_mld2_report(struct mc_struct *mc, struct sk_buff *skb,
 			return -EINVAL;
 
 		if (filter_num == ~0 || !grec->grec_nsrcs) { /* Del whole grec */
-			memcpy(skb->data + prev_offset, skb->data + len, tlen - len);
+			memmove(skb->data + prev_offset, skb->data + len, tlen - len);
 			tlen -= len - prev_offset;
 			len = prev_offset;
 			ngroup--;
 		} else { /* Del sources in grec */
 			filter_num *= sizeof(struct in6_addr);
-			memcpy(skb->data + len - filter_num, skb->data + len, tlen - len);
+			memmove(skb->data + len - filter_num, skb->data + len, tlen - len);
 			tlen -= filter_num;
 			len = len - filter_num;
 		}
@@ -2474,7 +2474,7 @@ static int mc_ipv6_rcv(struct mc_struct *mc, struct sk_buff *skb,
 
 	err = -EINVAL;
 	if (unlikely(!pskb_may_pull(skb2, offset + sizeof(*icmp6h))))
-		goto out;
+		goto out_nopush;
 
 	__skb_pull(skb2, offset);
 	skb_reset_transport_header(skb2);
@@ -2567,6 +2567,7 @@ static int mc_ipv6_rcv(struct mc_struct *mc, struct sk_buff *skb,
 
 out:
 	__skb_push(skb2, offset);
+out_nopush:
 	if (skb2 != skb)
 		kfree_skb(skb2);
 	return err;
